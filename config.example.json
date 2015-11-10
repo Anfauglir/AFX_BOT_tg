@@ -1,0 +1,6 @@
+{
+  "bot_token" : "XXXXXXX",
+  "resp_db" :  "resp_db.example.sqlite",
+  "adm_ids" : [12345678],
+  "limited_chats": [-98765432]
+}
