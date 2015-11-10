@@ -1,4 +1,5 @@
 afxbot_tg.sqlite
 config.json
 motd.json
+*.log
 .DS_Store
