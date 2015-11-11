@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # coding=UTF-8
 
+__author__ = 'Anfauglir'
+
 # TODO: anti-flood timer.
 
 import logging
@@ -19,7 +21,9 @@ LAST_UPDATE_ID = None
 
 logger = logging.getLogger()
 
+# hardcoded
 fortune_strs = ['大凶', '凶', '平', '小吉', '大吉']
+fortune_types = ['昨日', '今日', '明日']
 
 motds = None
 config = None
@@ -45,7 +49,7 @@ def json_serial(obj):
     if isinstance(obj, datetime):
         serial = obj.isoformat()
         return serial
-        
+
     if isinstance(obj, date):
         serial = obj.isoformat()
         return serial
@@ -55,7 +59,7 @@ class WashSnake:
     def __init__(self, firsttime, content, **kwargs):
         self.firsttime = firsttime
         self.content = content
-        
+
         self.responded = False
         self.repeattimes = kwargs.get('repeattimes')
         if self.repeattimes == None:
@@ -63,7 +67,7 @@ class WashSnake:
 
 def getLatestUpdateId(bot):
     global LAST_UPDATE_ID
-    
+
     # ignore all previous updates... ;)
     try:
         LAST_UPDATE_ID = bot.getUpdates()[-1].update_id
@@ -79,7 +83,7 @@ def main():
 
     logger = logging.getLogger('AFX_bot')
     logger.setLevel(logging.DEBUG)
-    
+
     # initialization
     try:
         f = open('config.json', 'r')
@@ -93,7 +97,7 @@ def main():
             raise ValueError
 
         f.close()
-        
+
         initResp()
     except FileNotFoundError:
         logger.error('config file not found!')
@@ -112,7 +116,7 @@ def main():
         motds = json.loads(f.read())
         f.close()
         #logger.debug(motds)
-        
+
         # str -> datetime
         for k in motds.keys():
             motds[k]['date'] = datetime.strptime(motds[k]['date'], '%Y-%m-%d').date()
@@ -123,7 +127,7 @@ def main():
         logger.error('MOTD read error!')
     except:
         raise
-    
+
     getLatestUpdateId(bot)
 
     while True:
@@ -135,7 +139,7 @@ def main():
             exit()
         except http.client.RemoteDisconnected:
             logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-            
+
             # try to reinit...
             bot = telegram.Bot(config['bot_token'])
             getLatestUpdateId(bot)
@@ -176,7 +180,7 @@ def initResp():
         c.execute('SELECT before, after FROM symptom_get ORDER BY LENGTH(before) DESC;')
         for syms in c:
             symptom_get[syms['before']] = syms['after']
-            
+
 
         unified_kw_list = kw_list + list(symptom_tbl.keys())
         unified_get_list = kw_list_get + list(symptom_get.keys())
@@ -197,17 +201,17 @@ def getMesg(bot):
         user_id = update.message.from_user.id
         schat_id = str(chat_id)
         suser_id = str(user_id)
-        
+
         if (message):
             if(not doAuthWithGroups(update.message.chat.id)):
                 logger.debug('Access denied from: ' + str(update.message.chat.id))
                 LAST_UPDATE_ID = update.update_id + 1
                 continue
-                
+
             washsnake_content = message.lower().strip()
             if(not str(chat_id) in wash_record.keys()):
                 wash_record[schat_id] = dict()
-            
+
             if(not suser_id in wash_record[schat_id].keys()):
                 logger.debug('new washsnake content for ' + suser_id)
                 wash_record[schat_id][suser_id] = WashSnake(update.message.date, washsnake_content)
@@ -225,7 +229,7 @@ def getMesg(bot):
                                 # WASH SNAKE!!
                                 bot.sendMessage(chat_id = chat_id, text = '幹你娘洗蛇', reply_to_message_id = mesg_id)
                                 wash_record[schat_id][suser_id].responded = True
-                                
+
                             LAST_UPDATE_ID = update.update_id + 1
                             continue
                     else:
@@ -250,8 +254,9 @@ def getMesg(bot):
             elif (message.lower().startswith('/motd') or '本日重點' in message or '今日重點' in message or '今天重點' in message):
                 doHandleMotd(bot, chat_id, message, mesg_id)
 
-            # C168不廢文
-            elif (is_running and chat_id != -30538482):
+            # 某些地方不廢文
+            elif (is_running and not chat_id in config['only_motd']):
+                # Batch update *.jpg in /images/
                 if (message.startswith('照片GOGO') and doAuth(user_id)):
                     p = Path('images')
                     fl = list(p.glob('*.jpg'))
@@ -266,6 +271,7 @@ def getMesg(bot):
                             photo_mesg = photo_res.photo[-1].file_id
                             bot.sendMessage(chat_id = chat_id, text = photo_mesg, reply_to_message_id = photo_res.message_id)
 
+                # Reload keyword table etc...
                 elif (message.startswith('憨包滾一圈')):
                     if(doAuth(user_id)):
                         initResp()
@@ -273,6 +279,7 @@ def getMesg(bot):
                     else:
                         bot.sendMessage(chat_id = chat_id, text = '……（憨）', reply_to_message_id = mesg_id)
 
+                # Disable bot
                 elif (message.startswith('憨包滾')):
                     if(doAuth(user_id)):
                         bot.sendMessage(chat_id = chat_id, text = '（滾動）（滾遠遠）（？）', reply_to_message_id = mesg_id)
@@ -280,6 +287,7 @@ def getMesg(bot):
                     else:
                         bot.sendMessage(chat_id = chat_id, text = '……（憨）', reply_to_message_id = mesg_id)
 
+                # Enter photo upload mode
                 elif (message.startswith('憨包來吃圖')):
                     if(doAuth(user_id)):
                         bot.sendMessage(chat_id = chat_id, text = '（張嘴）', reply_to_message_id = mesg_id)
@@ -287,6 +295,7 @@ def getMesg(bot):
                     else:
                         bot.sendMessage(chat_id = chat_id, text = '……（憨）', reply_to_message_id = mesg_id)
 
+                # Enter photo upload mode
                 elif (message.startswith('憨包吃飽沒')):
                     if(doAuth(user_id)):
                         bot.sendMessage(chat_id = chat_id, text = '（憨樣）', reply_to_message_id = mesg_id)
@@ -294,26 +303,25 @@ def getMesg(bot):
                     else:
                         bot.sendMessage(chat_id = chat_id, text = '吃飽了（憨）', reply_to_message_id = mesg_id)
 
+                # Handle ADM commands
                 elif (message.startswith('/adm') and doAuth(user_id)):
                     doHandleAdmCmd(bot, chat_id, message, mesg_id)
 
+                # Handle commands
                 elif (message.startswith('/')):
                     doHandleCmd(bot, chat_id, message, update.message.from_user.username ,mesg_id)
 
-                # wtf
-                elif ('今日運勢' in message):
-                    doHandleFortuneTell(bot, chat_id, user_id ,mesg_id, '今日')
+                # Fortune teller
+                elif (matchFortuneType(message) != None):
+                    doHandleFortuneTell(bot, chat_id, user_id ,mesg_id, matchFortuneType(message))
 
-                elif ('明日運勢' in message):
-                    doHandleFortuneTell(bot, chat_id, user_id ,mesg_id, '明日')
-
-                elif ('昨日運勢' in message):
-                    doHandleFortuneTell(bot, chat_id, user_id ,mesg_id, '昨日')
-
+                # other...
                 else:
                     doHandleResponse(bot, chat_id, message, mesg_id, user_id)
             else:
                 logger.debug('Not running...')
+
+        # upload photo, adm only
         elif (update.message.photo != None and is_accepting_photos and doAuth(user_id)):
             try:
                 logger.debug('PhotoContent: ' + update.message.photo[-1].file_id);
@@ -330,6 +338,14 @@ def getMesg(bot):
         # Updates global offset to get the new updates
         LAST_UPDATE_ID = update.update_id + 1
 
+def matchFortuneType(mesg):
+    global fortune_types
+    for fs in fortune_types:
+        if (fs + '運勢') in mesg:
+            return fs
+
+    return None
+
 def doAuth(id):
     return id in config['adm_ids']
 
@@ -343,16 +359,18 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
     global logger
     global resp_db, kw_list, kw_list_get, kw_list_m, is_accepting_photos
     global unified_kw_list, unified_get_list
-    
+
     cmd_toks = [x.strip() for x in mesg.split(' ')]
     cmd_entity = cmd_toks[1].lower()
 
     c = resp_db.cursor()
     logger.debug('cmd_entity: ' + cmd_entity)
 
+    # 憨包來吃圖
     if(cmd_entity == 'begin_img'):
         is_accepting_photos = True
 
+    # 憨包吃飽沒
     if(cmd_entity == 'end_img'):
         is_accepting_photos = False
 
@@ -374,7 +392,8 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
             bot.sendMessage(chat_id = chat_id, text = 'ERROR ON : ' + img_kw + ' => ' + img_id , reply_to_message_id = photo_res.message_id)
             pass
 
-    elif(cmd_entity == 'list_get'):
+    # list /get kw
+    elif(cmd_entity == 'ls_get'):
         if(len(cmd_toks) > 2):
             outmesg = ''
             img_kw = cmd_toks[2].lower()
@@ -392,18 +411,20 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
             outmesg = 'Supported /get keywords:\n'
             s_keys = symptom_get.keys()
             for kw in unified_get_list:
-                
+
                 if (kw in s_keys):
                     outmesg = outmesg + kw + ' -> ' + symptom_get[kw] + '\n'
                 else:
                     outmesg = outmesg + kw + '\n'
 
-            bot.sendMessage(chat_id = chat_id, text = outmesg , reply_to_message_id = mesg_id)    
-            
+            bot.sendMessage(chat_id = chat_id, text = outmesg , reply_to_message_id = mesg_id)
+
+    # nothing yet
     elif(cmd_entity == 'add_kw'):
         not_implemented = 1
 
-    elif(cmd_entity == 'list_kw'):
+    # list keyword
+    elif(cmd_entity == 'ls_kw'):
         s_keys = symptom_tbl.keys()
         if(len(cmd_toks) > 2):
             outmesg = ''
@@ -413,21 +434,21 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
             c.execute('''SELECT cont FROM resp WHERE keyword = ? ORDER BY IIDX DESC;''', (kw, ))
             for conts in c:
                 outmesg += conts['cont'] + '\n'
-                
+
 
             bot.sendMessage(chat_id = chat_id, text = kw + ' => \n' + outmesg , reply_to_message_id = mesg_id)
 
         else:
             outmesg = 'Supported keywords:\n'
             for kw in unified_kw_list:
-                
+
                 if (kw in s_keys):
                     outmesg = outmesg + kw + ' -> ' + symptom_tbl[kw] + '\n'
                 else:
                     outmesg = outmesg + kw + '\n'
 
-            bot.sendMessage(chat_id = chat_id, text = outmesg , reply_to_message_id = mesg_id) 
-            
+            bot.sendMessage(chat_id = chat_id, text = outmesg , reply_to_message_id = mesg_id)
+
     else:
         bot.sendMessage(chat_id = chat_id, text = 'adm what? owo'  , reply_to_message_id = mesg_id)
 
@@ -581,13 +602,13 @@ def doHandleFortuneTell(bot, chat_id, target_id, message_id, type):
     md5 = hashlib.md5()
 
     format_str = '^_^ANFAUGLIR_SALT##$$%Y__??__%m__!!__%d**&&ANFAUGLIR_SALT^_^'
-    
+
     fortune_date = date.today()
     if(type == '明日'):
         fortune_date = fortune_date+timedelta(days=1)
     elif (type == '昨日'):
         fortune_date = fortune_date-timedelta(days=1)
-    
+
     f_data = bytearray(str(target_id) + datetime.strftime(fortune_date, format_str), 'utf-8')
 
     md5.update(f_data)
@@ -609,13 +630,13 @@ def doHandleMotd(bot, chat_id, mesg, mesg_id):
             motd_cmd = mesg[5:].strip()
             if(not schat_id in motds.keys()):
                 motds[schat_id] = dict()
-            
+
             motds[schat_id]['msg'] = motd_cmd
             motds[schat_id]['date'] = date.today()
-            
+
             today_str = datetime.strftime(motds[schat_id]['date'], '%Y-%m-%d')
             logger.info('MOTD: \n'+motds[schat_id]['msg'])
-            
+
             try:
                 logger.info('writing MOTD contents')
                 with open('motd.json', 'w') as f:
@@ -634,7 +655,7 @@ def doHandleMotd(bot, chat_id, mesg, mesg_id):
 def printMotd(bot, chat_id, mesg_id):
     global motds
     schat_id = str(chat_id)
-    
+
     if(schat_id in motds.keys()):
         motd_date_str = datetime.strftime(motds[schat_id]['date'], '%Y-%m-%d')
     else:
