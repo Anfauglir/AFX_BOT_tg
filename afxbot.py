@@ -3,7 +3,9 @@
 
 __author__ = 'Anfauglir'
 
-# TODO: anti-flood timer.
+# TODO:
+# 1. anti-flood timer.
+# 2. REize all command handler.  (optional)
 
 import logging
 import telegram
@@ -13,36 +15,49 @@ import json
 import sqlite3
 import string
 import http
+import hashlib
+import urllib
+import argparse
 from datetime import date, datetime, timedelta
 from pathlib import Path
-import hashlib
 
+
+# Base. ;)
 LAST_UPDATE_ID = None
-
 logger = logging.getLogger()
-
-# hardcoded
-fortune_strs = ['大凶', '凶', '平', '小吉', '大吉']
-fortune_types = ['昨日', '今日', '明日']
-
+bot = None
 motds = None
 config = None
+strs = None
 
-resp_db = None
+# Keyword and Sympotom lists.
 kw_list = None
-kw_list_m = None
 kw_list_get = None
 symptom_tbl = None
 symptom_get = None
 
+# Unified with symptom entries.
 unified_kw_list = None
 unified_get_list = None
 
+# Bot state
 is_running = True
 is_accepting_photos = False
 
+# For wash snake
 wash_record = dict()
 
+# Hardcoded fortune...
+fortune_strs = ['大凶', '凶', '平', '小吉', '大吉']
+fortune_types = ['昨日', '今日', '明日']
+
+# Hardcoded Strings...
+wash_snake_strs_unified = None
+log_fmt_str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+gnn_washsnake = None
+
+# For serialize date/datetime into string.
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
 
@@ -65,133 +80,181 @@ class WashSnake:
         if self.repeattimes == None:
             self.repeattimes = 0
 
-def getLatestUpdateId(bot):
-    global LAST_UPDATE_ID
+# Gonna ignore all previous updates... ;)
+def getLatestUpdateId():
+    global LAST_UPDATE_ID, bot
 
-    # ignore all previous updates... ;)
     try:
-        LAST_UPDATE_ID = bot.getUpdates()[-1].update_id
-        LAST_UPDATE_ID = bot.getUpdates(offset=LAST_UPDATE_ID)[-1].update_id
-    except IndexError:
+        LAST_UPDATE_ID = bot.getUpdates(timeout = 10)[-1].update_id
+        LAST_UPDATE_ID = bot.getUpdates(offset=LAST_UPDATE_ID, timeout = 10)[-1].update_id
+    except:
+        logging.exception('!!! Get Last update ID Error !!!')
         LAST_UPDATE_ID = None
 
-def main():
-    global LAST_UPDATE_ID, motds, logger, resp_db
-    global config
+# If snake is None, initialize a empty list.
+def cheakAndInitEmptyList(snake):
+    if(snake == None):
+        return []
+    else:
+        return snake
 
-    logging.basicConfig(filename='afxbot.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+def main():
+    global logger, config, bot, strs
+    global LAST_UPDATE_ID, motds, resp_db
+    global log_fmt_str
+    global gnn_washsnake, wash_snake_strs_unified
+
+    # Parse command line params
+    arg_parser = argparse.ArgumentParser(description = 'AFX_bot, a simple Telegram bot in Python.')
+    arg_parser.add_argument('-l', '--logfile', help='Logfile Name', action='store_true')
+
+    args = arg_parser.parse_args()
+
+    if(args.logfile):
+        logging.basicConfig( level=logging.DEBUG, format=log_fmt_str, filename=args.logfile)
+    else:
+        logging.basicConfig( level=logging.DEBUG, format=log_fmt_str)
 
     logger = logging.getLogger('AFX_bot')
     logger.setLevel(logging.DEBUG)
 
     # initialization
     try:
-        f = open('config.json', 'r')
-        config = json.loads(f.read())
+        with open('config.json', 'r', encoding = 'utf8') as f:
+            config = json.loads(f.read())
 
         # check configurations
         if(config['bot_token'] == None
             or config['resp_db'] == None
             or config['adm_ids'] == None
-            or config['limited_chats'] == None):
+            or config['strings_json'] == None):
             raise ValueError
 
-        f.close()
+        config['limited_chats'] = cheakAndInitEmptyList(config['limited_chats'])
+        config['only_motd'] = cheakAndInitEmptyList(config['only_motd'])
 
         initResp()
     except FileNotFoundError:
-        logger.error('config file not found!')
+        logging.exception('config file not found!')
         raise
     except ValueError:
-        logger.error('config read error!')
+        logging.exception('config read error or item missing!')
         raise
     except:
         raise
-
+        
+    try:
+        with open(config['strings_json'], 'r', encoding = 'utf8') as f:
+            strs = json.loads(f.read())
+            
+            wash_snake_strs_unified = strs['r_wash_snake_strs'] + strs['r_invasive_wash_snake_strs']
+    except:
+        logging.exception('L10N Strings read error!')
+        raise
+        
     # Telegram Bot Authorization Token
     bot = telegram.Bot(config['bot_token'])
 
     try:
-        f = open('motd.json', 'r')
-        motds = json.loads(f.read())
-        f.close()
-        #logger.debug(motds)
+        with open('motd.json', 'r', encoding = 'utf8') as f:
+            motds = json.loads(f.read())
 
         # str -> datetime
         for k in motds.keys():
             motds[k]['date'] = datetime.strptime(motds[k]['date'], '%Y-%m-%d').date()
 
     except FileNotFoundError:
-        logger.error('MOTD file not found!')
+        logging.exception('MOTD file not found!')
     except ValueError:
-        logger.error('MOTD read error!')
+        logging.exception('MOTD read error!')
     except:
         raise
+        
+    try:
+        with open('gnn_washsnake.json', 'r') as f:
+            gnn_json = json.loads(f.read(), encoding='utf-8')
+            
+        if(gnn_json['gnn_washsnake'] != None):
+            gnn_washsnake = gnn_json['gnn_washsnake']
+                
+    except FileNotFoundError:
+        logging.exception('gnn_washsnake file not found!')
+    except ValueError:
+        logging.exception('gnn_washsnake read error!')
+    except:
+        do_nothing = 1
 
-    getLatestUpdateId(bot)
+    getLatestUpdateId()
+
+    recoverStatus = False
 
     while True:
         # This will be our global variable to keep the latest update_id when requesting
         # for updates. It starts with the latest update_id if available.
         try:
-            getMesg(bot)
+            if(recoverStatus == True):
+                # try to reinit...
+                bot = telegram.Bot(config['bot_token'])
+                getLatestUpdateId()
+                recoverStatus = False
+
+            getMesg()
         except KeyboardInterrupt:
             exit()
-        except http.client.RemoteDisconnected:
+        except http.client.HTTPException:
             logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-
-            # try to reinit...
-            bot = telegram.Bot(config['bot_token'])
-            getLatestUpdateId(bot)
+            recoverStatus = True
+        except urllib.error.HTTPError:
+            logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
+            recoverStatus = True
         except Exception as ex:
             logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-            getLatestUpdateId(bot)
+            recoverStatus = True
 
+# Read all keywords/symptoms from resp_db.
 def initResp():
-    global config
     global logger, resp_db
-    global kw_list, kw_list_m, kw_list_get, symptom_tbl, symptom_get, unified_kw_list, unified_get_list
-    try:
-        resp_db = sqlite3.connect(config['resp_db'])
-        resp_db.row_factory = sqlite3.Row
-        c = resp_db.cursor()
+    global kw_list, kw_list_get, symptom_tbl, symptom_get, unified_kw_list, unified_get_list
 
-        kw_list = list()
-        c.execute('SELECT keyword FROM resp GROUP BY keyword ORDER BY RANDOM() DESC;')
-        for kw in c:
-            kw_list.append(kw['keyword'])
+    resp_db = sqlite3.connect(config['resp_db'])
+    resp_db.row_factory = sqlite3.Row
+    c = resp_db.cursor()
 
-        kw_list_m = list()
-        c.execute('SELECT keyword FROM resp_m GROUP BY keyword ORDER BY RANDOM() DESC;')
-        for kw in c:
-            kw_list_m.append(kw['keyword'])
+    kw_list = list()
+    c.execute('SELECT keyword FROM resp GROUP BY keyword ORDER BY RANDOM() DESC;')
+    for kw in c:
+        kw_list.append(kw['keyword'])
 
-        kw_list_get = list()
-        c.execute('SELECT keyword FROM resp_get GROUP BY keyword ORDER BY RANDOM() DESC;')
-        for kw in c:
-            kw_list_get.append(kw['keyword'])
+    kw_list_get = list()
+    c.execute('SELECT keyword FROM resp_get GROUP BY keyword ORDER BY RANDOM() DESC;')
+    for kw in c:
+        kw_list_get.append(kw['keyword'])
 
-        symptom_tbl = dict()
-        c.execute('SELECT before, after FROM symptom ORDER BY LENGTH(before) DESC;')
-        for syms in c:
-            symptom_tbl[syms['before']] = syms['after']
+    symptom_tbl = dict()
+    c.execute('SELECT before, after FROM symptom ORDER BY LENGTH(before) DESC;')
+    for syms in c:
+        symptom_tbl[syms['before']] = syms['after']
 
-        symptom_get = dict()
-        c.execute('SELECT before, after FROM symptom_get ORDER BY LENGTH(before) DESC;')
-        for syms in c:
-            symptom_get[syms['before']] = syms['after']
+    symptom_get = dict()
+    c.execute('SELECT before, after FROM symptom_get ORDER BY LENGTH(before) DESC;')
+    for syms in c:
+        symptom_get[syms['before']] = syms['after']
 
 
-        unified_kw_list = kw_list + list(symptom_tbl.keys())
-        unified_get_list = kw_list_get + list(symptom_get.keys())
+    unified_kw_list = kw_list + list(symptom_tbl.keys())
+    unified_get_list = kw_list_get + list(symptom_get.keys())
 
-    except:
-        raise
+# For sending simple messages only including text (in most cases.)
+def sendGenericMesg(chat_id, mesg_id, text):
+    global bot
+    bot.sendMessage(chat_id = chat_id, text = text, reply_to_message_id = mesg_id)
 
-
-def getMesg(bot):
-    global LAST_UPDATE_ID, logger, is_running, is_accepting_photos, wash_record
-
+# Fetch updates from server for further processes.
+def getMesg():
+    global logger, bot, strs
+    global LAST_UPDATE_ID, is_running, is_accepting_photos, wash_record, wash_snake_strs_unified
+    global gnn_washsnake
+    
     # Request updates after the last updated_id
     for update in bot.getUpdates(offset=LAST_UPDATE_ID, timeout=10):
         # chat_id is required to reply any message
@@ -199,15 +262,18 @@ def getMesg(bot):
         message = update.message.text
         mesg_id = update.message.message_id
         user_id = update.message.from_user.id
-        schat_id = str(chat_id)
-        suser_id = str(user_id)
 
         if (message):
+            # YOU SHALL NOT PASS!
+            # Only authorized group chats and users (admins) can access this bot.
             if(not doAuthWithGroups(update.message.chat.id)):
                 logger.debug('Access denied from: ' + str(update.message.chat.id))
                 LAST_UPDATE_ID = update.update_id + 1
                 continue
 
+            # Wash snake... Must convert id's into string for dict storage.
+            schat_id = str(chat_id)
+            suser_id = str(user_id)
             washsnake_content = message.lower().strip()
             if(not str(chat_id) in wash_record.keys()):
                 wash_record[schat_id] = dict()
@@ -227,97 +293,112 @@ def getMesg(bot):
                         if(washsnake_entry.repeattimes >= 2):
                             if(not washsnake_entry.responded):
                                 # WASH SNAKE!!
-                                bot.sendMessage(chat_id = chat_id, text = '幹你娘洗蛇', reply_to_message_id = mesg_id)
+                                if(chat_id in gnn_washsnake or doAuth(user_id)):
+                                    sendGenericMesg(chat_id, mesg_id, random.choice(wash_snake_strs_unified))
+                                else:
+                                    sendGenericMesg(chat_id, mesg_id, random.choice(strs['r_wash_snake_strs']))
                                 wash_record[schat_id][suser_id].responded = True
 
                             LAST_UPDATE_ID = update.update_id + 1
                             continue
                     else:
+                        # reset wash snake counter...
                         wash_record[schat_id][suser_id].responded = False
                         wash_record[schat_id][suser_id].firsttime = update.message.date
+                        wash_record[schat_id][suser_id].repeattimes = 0
                 else:
                     logger.debug('update wash for ' + suser_id)
                     wash_record[schat_id][suser_id] = WashSnake(update.message.date, washsnake_content)
 
-            if ('憨包在嗎' in message):
+            # Status querying.
+            if (strs['q_status_kw'] in message):
                 if(is_running):
-                    bot.sendMessage(chat_id = chat_id, text = '憨包狀態：正常憨包中', reply_to_message_id = mesg_id)
+                    sendGenericMesg(chat_id, mesg_id, strs['qr_status_t'])
                 else:
-                    bot.sendMessage(chat_id = chat_id, text = '憨包狀態：不在…', reply_to_message_id = mesg_id)
+                    sendGenericMesg(chat_id, mesg_id, strs['qr_status_f'])
 
-            elif (not is_running and message.startswith('憨包回來') and doAuth(user_id)):
-                bot.sendMessage(chat_id = chat_id, text = '（滾動）（滾回來）（？）', reply_to_message_id = mesg_id)
+            # Only admins can re-enable bot.
+            elif (not is_running and message.startswith(strs['s_status_t_kw']) and doAuth(user_id)):
+                sendGenericMesg(chat_id, mesg_id, strs['sr_status_t_ok'])
                 initResp()
                 is_running = True
 
-            # 今日重點是必要的
+            # MOTDs are necessary.
             elif (message.lower().startswith('/motd') or '本日重點' in message or '今日重點' in message or '今天重點' in message):
-                doHandleMotd(bot, chat_id, message, mesg_id)
+                doHandleMotd(chat_id, message, mesg_id)
 
-            # 某些地方不廢文
+            # Only MOTD for some special groups, otherwise...
             elif (is_running and not chat_id in config['only_motd']):
                 # Batch update *.jpg in /images/
                 if (message.startswith('照片GOGO') and doAuth(user_id)):
                     p = Path('images')
                     fl = list(p.glob('*.jpg'))
                     if(len(fl) == 0):
-                        bot.sendMessage(chat_id = chat_id, text = '/images/裡頭，沒圖沒真相...', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, '/images/裡頭，沒圖沒真相...')
                     else:
                         for image_name in fl:
                             # for uploading new photos
-                            nn = open(str(image_name), 'rb')
-                            photo_res = bot.sendPhoto(chat_id = chat_id, photo = nn)
-                            nn.close()
+                            with open(str(image_name), 'rb') as nn:
+                                photo_res = bot.sendPhoto(chat_id = chat_id, photo = nn)
+
                             photo_mesg = photo_res.photo[-1].file_id
-                            bot.sendMessage(chat_id = chat_id, text = photo_mesg, reply_to_message_id = photo_res.message_id)
+                            sendGenericMesg(chat_id, photo_res.message_id, photo_mesg)
 
                 # Reload keyword table etc...
-                elif (message.startswith('憨包滾一圈')):
+                elif (message.startswith(strs['a_reload_kwlist_kw'])):
                     if(doAuth(user_id)):
                         initResp()
-                        bot.sendMessage(chat_id = chat_id, text = '（滾動）（滾一圈後回來）（？）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['ar_reload_kwlist_ok'])
                     else:
-                        bot.sendMessage(chat_id = chat_id, text = '……（憨）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['ar_reload_kwlist_ng'])
 
                 # Disable bot
-                elif (message.startswith('憨包滾')):
+                elif (message.startswith(strs['s_status_f_kw'])):
                     if(doAuth(user_id)):
-                        bot.sendMessage(chat_id = chat_id, text = '（滾動）（滾遠遠）（？）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['sr_status_f_ok'])
                         is_running = False
                     else:
-                        bot.sendMessage(chat_id = chat_id, text = '……（憨）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['sr_status_f_ng'])
 
                 # Enter photo upload mode
-                elif (message.startswith('憨包來吃圖')):
+                elif (message.startswith(strs['s_imgupload_t_kw'])):
                     if(doAuth(user_id)):
-                        bot.sendMessage(chat_id = chat_id, text = '（張嘴）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['sr_imgupload_t_ok'])
                         is_accepting_photos = True
                     else:
-                        bot.sendMessage(chat_id = chat_id, text = '……（憨）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['sr_imgupload_t_ng'])
 
                 # Enter photo upload mode
-                elif (message.startswith('憨包吃飽沒')):
+                elif (message.startswith(strs['s_imgupload_f_kw'])):
                     if(doAuth(user_id)):
-                        bot.sendMessage(chat_id = chat_id, text = '（憨樣）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['sr_imgupload_f_ok'])
                         is_accepting_photos = False
                     else:
-                        bot.sendMessage(chat_id = chat_id, text = '吃飽了（憨）', reply_to_message_id = mesg_id)
+                        sendGenericMesg(chat_id, mesg_id, strs['sr_imgupload_f_ng'])
 
                 # Handle ADM commands
                 elif (message.startswith('/adm') and doAuth(user_id)):
-                    doHandleAdmCmd(bot, chat_id, message, mesg_id)
+                    doHandleAdmCmd(chat_id, message, mesg_id)
 
                 # Handle commands
                 elif (message.startswith('/')):
-                    doHandleCmd(bot, chat_id, message, update.message.from_user.username ,mesg_id)
+                    doHandleCmd(chat_id, message, mesg_id)
 
                 # Fortune teller
                 elif (matchFortuneType(message) != None):
-                    doHandleFortuneTell(bot, chat_id, user_id ,mesg_id, matchFortuneType(message))
+                    doHandleFortuneTell(chat_id, user_id ,mesg_id, matchFortuneType(message))
 
                 # other...
                 else:
-                    doHandleResponse(bot, chat_id, message, mesg_id, user_id)
+                    doHandleResponse(chat_id, message, mesg_id, user_id)
+            elif (is_running):
+                # Handle commands
+                if (message.startswith('/')):
+                    doHandleCmd(chat_id, message, mesg_id, True)
+
+                # Fortune teller
+                elif (matchFortuneType(message) != None):
+                    doHandleFortuneTell(chat_id, user_id ,mesg_id, matchFortuneType(message))
             else:
                 logger.debug('Not running...')
 
@@ -328,7 +409,7 @@ def getMesg(bot):
                 photo_mesg = update.message.photo[-1].file_id
                 photo_res = bot.sendPhoto(chat_id = chat_id, photo = photo_mesg)
                 photo_mesg = photo_res.photo[-1].file_id
-                bot.sendMessage(chat_id = chat_id, text = photo_mesg, reply_to_message_id = photo_res.message_id)
+                sendGenericMesg(chat_id, photo_res.message_id, photo_mesg)
             except:
                 nothing_todo = 1
 
@@ -350,14 +431,17 @@ def doAuth(id):
     return id in config['adm_ids']
 
 def doAuthWithGroups(cid):
-    return cid in config['limited_chats'] or cid in config['adm_ids']
+    if len(config['limited_chats']) == 0:
+        return id in config['adm_ids']
+    else:
+        return cid in config['limited_chats'] or cid in config['adm_ids']
 
 def appendMoreSmile(str, rl = 1, ru = 3):
     return str + '\U0001F603' * random.randint(rl, ru)
 
-def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
-    global logger
-    global resp_db, kw_list, kw_list_get, kw_list_m, is_accepting_photos
+def doHandleAdmCmd(chat_id, mesg, mesg_id):
+    global logger, bot
+    global resp_db, kw_list, kw_list_get, is_accepting_photos
     global unified_kw_list, unified_get_list
 
     cmd_toks = [x.strip() for x in mesg.split(' ')]
@@ -366,46 +450,75 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
     c = resp_db.cursor()
     logger.debug('cmd_entity: ' + cmd_entity)
 
+    ### for /get
     # 憨包來吃圖
-    if(cmd_entity == 'begin_img'):
+    if(cmd_entity == 'begin_get'):
         is_accepting_photos = True
 
     # 憨包吃飽沒
-    if(cmd_entity == 'end_img'):
+    elif(cmd_entity == 'end_get'):
         is_accepting_photos = False
 
-    elif(cmd_entity == 'assign_img'):
-        img_id = cmd_toks[2]
-        img_kw = cmd_toks[3].lower()
+    elif(cmd_entity == 'mk_get'):
+        id = cmd_toks[2]
+        kw = cmd_toks[3].lower()
         if (len(cmd_toks) > 4):
-            img_tag = cmd_toks[4]
+            tag = cmd_toks[4]
         else:
-            img_tag = None
+            tag = None
         try:
             photo_res = bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = cmd_toks[2]);
-            bot.sendMessage(chat_id = chat_id, text = img_kw + ' => ' + img_id , reply_to_message_id = photo_res.message_id)
+            if(kw in symptom_get.keys()):
+                sendGenericMesg(chat_id, photo_res.message_id, '({0} -> {1}) => {2}'.format(kw, symptom_get[kw], id))
+                kw = symptom_get[kw]
+            else:
+                sendGenericMesg(chat_id, photo_res.message_id, '{0}  => {1}'.format(kw, id))
 
-            c.execute('''INSERT INTO resp_get (keyword, cont, tag) VALUES (?, ?, ?) ''', ( img_kw, img_id, img_tag, ))
+            c.execute('''INSERT INTO resp_get (keyword, cont, tag) VALUES (?, ?, ?) ''', ( kw, id, tag, ))
             resp_db.commit()
             initResp()
         except TelegramError:
-            bot.sendMessage(chat_id = chat_id, text = 'ERROR ON : ' + img_kw + ' => ' + img_id , reply_to_message_id = photo_res.message_id)
-            pass
+            sendGenericMesg(chat_id, photo_res.message_id, 'ERROR ON : {1} => {2}'.format(kw, id))
+
+    elif(cmd_entity == 'getpic'):
+        id = cmd_toks[2]
+
+        try:
+            photo_res = bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = id);
+        except TelegramError:
+            sendGenericMesg(chat_id, photo_res.message_id, 'ERROR ON : {1}'.format(id))
+
+    elif(cmd_entity == 'ed_get'):
+        not_implemented = 1
+
+    # make get symptom -> keyword
+    elif(cmd_entity == 'mk_get_sym'):
+        if(len(cmd_toks) > 3):
+            kw_before = cmd_toks[2].lower()
+            kw_after = cmd_toks[3].lower()
+        else:
+            not_implemented = 1
 
     # list /get kw
     elif(cmd_entity == 'ls_get'):
         if(len(cmd_toks) > 2):
             outmesg = ''
-            img_kw = cmd_toks[2].lower()
+            kw = cmd_toks[2].lower()
 
-            c.execute('''SELECT cont, tag FROM resp_get WHERE keyword = ? ORDER BY IIDX DESC;''', (img_kw, ))
+            if(kw in symptom_tbl.keys()):
+                outmesg += '({0} -> {1}) => \n'.format(kw, symptom_tbl[kw])
+                kw = symptom_tbl[kw]
+            else:
+                outmesg += '{0} => \n'.format(kw)
+            
+            c.execute('''SELECT cont, tag FROM resp_get WHERE keyword = ? ORDER BY IIDX DESC;''', (kw, ))
             for conts in c:
                 if conts['tag'] == None :
                     outmesg += conts['cont'] + ' (N/A)\n'
                 else:
                     outmesg += conts['cont'] + ' (' + conts['tag'] + ')\n'
 
-            bot.sendMessage(chat_id = chat_id, text = img_kw + ' => \n' + outmesg , reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, outmesg)
 
         else:
             outmesg = 'Supported /get keywords:\n'
@@ -417,10 +530,44 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
                 else:
                     outmesg = outmesg + kw + '\n'
 
-            bot.sendMessage(chat_id = chat_id, text = outmesg , reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, outmesg )
 
+    ### for typical conversation
     # nothing yet
-    elif(cmd_entity == 'add_kw'):
+    # make keyword -> content
+    # ^/adm\s+mk_kw\s+([^\s]+)\s+(.+)$
+    elif(cmd_entity == 'mk_kw'):
+        if(len(cmd_toks) > 3):
+            kw = cmd_toks[2].lower()
+            content = cmd_toks[3]
+
+            if(kw in symptom_tbl.keys()):
+                sendGenericMesg(chat_id, mesg_id, '({0} -> {1}) => {2}'.format(kw, symptom_tbl[kw], content))
+                kw = symptom_tbl[kw]
+            else:
+                sendGenericMesg(chat_id, mesg_id, '{0}  => {1}'.format(kw, content))
+
+            c.execute('''INSERT INTO resp (keyword, cont) VALUES (?, ?) ''', ( kw, content, ))
+            resp_db.commit()
+        else:
+            not_implemented = 1
+
+    # make symptom -> keyword
+    # ^/adm\s+mk_sym\s+([^\s]+)\s+([^\s]+).*$
+    elif(cmd_entity == 'mk_sym'):
+        if(len(cmd_toks) > 3):
+            kw_before = cmd_toks[2].lower()
+            kw_after = cmd_toks[3].lower()
+
+            sendGenericMesg(chat_id, mesg_id, '({0} -> {1}) => …'.format(kw_before, kw_after))
+        else:
+            not_implemented = 1
+
+    # todo: assign index for each kw -> cont pair.
+    elif(cmd_entity == 'rm_kw'):
+        not_implemented = 1
+
+    elif(cmd_entity == 'rm_get_sym'):
         not_implemented = 1
 
     # list keyword
@@ -436,7 +583,7 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
                 outmesg += conts['cont'] + '\n'
 
 
-            bot.sendMessage(chat_id = chat_id, text = kw + ' => \n' + outmesg , reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, kw + ' => \n' + outmesg )
 
         else:
             outmesg = 'Supported keywords:\n'
@@ -447,18 +594,18 @@ def doHandleAdmCmd(bot, chat_id, mesg, mesg_id):
                 else:
                     outmesg = outmesg + kw + '\n'
 
-            bot.sendMessage(chat_id = chat_id, text = outmesg , reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, outmesg )
 
     else:
-        bot.sendMessage(chat_id = chat_id, text = 'adm what? owo'  , reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, 'adm what? owo'  )
 
-def doHandleCmd(bot, chat_id, mesg, username, mesg_id):
-    global logger
-    global resp_db, kw_list, kw_list_get, kw_list_m
+def doHandleCmd(chat_id, mesg, mesg_id, restricted = False): 
+    global logger, bot
+    global resp_db, kw_list, kw_list_get
     global unified_kw_list
     mesg_low = mesg.lower().replace('@afx_bot', '')
 
-    if (mesg_low.startswith('/get ')):
+    if (mesg_low.startswith('/get ') and not restricted):
         keyword = mesg_low[5:].strip()
         logger.debug('keyword: ' + keyword)
 
@@ -471,32 +618,31 @@ def doHandleCmd(bot, chat_id, mesg, username, mesg_id):
             x = c.fetchone()
             bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = str(x['cont']));
         else:
-            bot.sendMessage(chat_id = chat_id, text = appendMoreSmile('You get nothing! '), reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, appendMoreSmile('You get nothing! '))
 
         return True
 
     elif (mesg == '/roll@AFX_bot'):
-        bot.sendMessage(chat_id = chat_id, text = "/roll [ 最大值 (1000) | 最小值-最大值 (20-30) | 骰數d骰面[+-調整值] (2d6, 1d20+12) | 骰數d骰面s成功值 (2d6s4) ]", reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, '/roll [ 最大值 (1000) | 最小值-最大值 (20-30) | 骰數d骰面[+-調整值] (2d6, 1d20+12) | 骰數d骰面s成功值 (2d6s4) ]')
         return True
 
     elif (mesg_low.startswith('/roll ') or mesg_low == '/roll'):
-        return doHandleRoll(bot, chat_id, mesg_low, username, mesg_id)
+        return doHandleRoll(chat_id, mesg_low, mesg_id)
 
     return False
 
-def doHandleResponse(bot, chat_id, mesg, mesg_id, user_id):
-    global resp_db
-    global logger, symptom_tbl, kw_list_m
-    global unified_kw_list
+def doHandleResponse(chat_id, mesg, mesg_id, user_id):
+    global logger, bot
+    global resp_db, symptom_tbl, unified_kw_list
     mesg_low = mesg.lower()
 
     # hardcoded...
     if ( 'ass' in mesg_low and not 'pass' in mesg_low):
-        bot.sendMessage(chat_id = chat_id, text = 'Ood', reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, 'Ood')
         return True
 
     if ('阿倫' in mesg):
-        bot.sendMessage(chat_id = chat_id, text = appendMoreSmile('你需要更多的ㄅㄊ '), reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, appendMoreSmile('你需要更多的ㄅㄊ '))
         return True
 
     random.shuffle(unified_kw_list)
@@ -515,12 +661,14 @@ def doHandleResponse(bot, chat_id, mesg, mesg_id, user_id):
             c = resp_db.cursor()
             c.execute('''SELECT cont FROM resp WHERE keyword = ? ORDER BY RANDOM() LIMIT 1;''', ( unified_kw, ))
             x = c.fetchone()
-            bot.sendMessage(chat_id = chat_id, text = str(x['cont']), reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, str(x['cont']))
             return True
 
     return False
 
-def doHandleRoll(bot, chat_id, mesg_low, username, mesg_id):
+def doHandleRoll(chat_id, mesg_low, mesg_id):
+    global bot
+
     if (mesg_low == '/roll'):
         d_cmd = ''
     else:
@@ -542,7 +690,7 @@ def doHandleRoll(bot, chat_id, mesg_low, username, mesg_id):
             dstr += str(val) + ', '
 
         dstr = '{0}d{1}s{2} : {3}) >= {2}, 成功 {4} 次'.format(dn, dt, ds, dstr[:-2], succ);
-        bot.sendMessage(chat_id = chat_id, text = dstr, reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, dstr)
         return True
 
     res = re.match('([0-9]+)d([0-9]+)([+-][0-9]+)?', d_cmd)
@@ -572,7 +720,7 @@ def doHandleRoll(bot, chat_id, mesg_low, username, mesg_id):
             else:
                 dm_str = str(dm)
             dstr = '{0}d{1}{2} : {3}) {2} = {4} {2} = {5}'.format(dn, dt, dm_str, dstr[:-2], sum, sum+dm);
-        bot.sendMessage(chat_id = chat_id, text = dstr, reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, dstr)
         return True
 
     res = re.match('([0-9]+)(-([0-9]+))?', d_cmd)
@@ -585,20 +733,20 @@ def doHandleRoll(bot, chat_id, mesg_low, username, mesg_id):
             du = int(res.group(1))
 
         dstr = '你擲出了: {0} ({1}-{2})'.format(random.randint(dl, du), dl, du);
-        bot.sendMessage(chat_id = chat_id, text = dstr, reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, dstr)
         return True
 
     if (d_cmd == ''):
         dstr = '你擲出了: {0} (1-100)'.format(random.randint(1,100));
-        bot.sendMessage(chat_id = chat_id, text = dstr, reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, dstr)
         return True
 
     else:
-        bot.sendMessage(chat_id = chat_id, text = "/roll [ 最大值 (1000) | 最小值-最大值 (20-30) | 骰數d骰面[+-調整值] (2d6, 1d20+12) | 骰數d骰面s成功值 (2d6s4) ]", reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, '/roll [ 最大值 (1000) | 最小值-最大值 (20-30) | 骰數d骰面[+-調整值] (2d6, 1d20+12) | 骰數d骰面s成功值 (2d6s4) ]')
         return True
 
-def doHandleFortuneTell(bot, chat_id, target_id, message_id, type):
-    global fortune_strs
+def doHandleFortuneTell(chat_id, target_id, message_id, type):
+    global bot, fortune_strs
     md5 = hashlib.md5()
 
     format_str = '^_^ANFAUGLIR_SALT##$$%Y__??__%m__!!__%d**&&ANFAUGLIR_SALT^_^'
@@ -612,20 +760,20 @@ def doHandleFortuneTell(bot, chat_id, target_id, message_id, type):
     f_data = bytearray(str(target_id) + datetime.strftime(fortune_date, format_str), 'utf-8')
 
     md5.update(f_data)
-    fstr = type + '運勢：' + fortune_strs[int(md5.digest()[12]) % len(fortune_strs)]
-    bot.sendMessage(chat_id = chat_id, text = fstr, reply_to_message_id = message_id)
+    fstr = '{0}運勢：{1}'.format(type, fortune_strs[int(md5.digest()[12]) % len(fortune_strs)])
+    sendGenericMesg(chat_id, message_id, fstr)
 
 
 
-def doHandleMotd(bot, chat_id, mesg, mesg_id):
-    global motds
+def doHandleMotd(chat_id, mesg, mesg_id):
+    global bot, motds
     mesg_low = mesg.lower().replace('@afx_bot', '')
     mesg = mesg.replace('@afx_bot', '')
     schat_id = str(chat_id)
 
     if(mesg_low.startswith('/motd')):
         if(mesg_low == '/motd'):  # print motd
-            printMotd(bot, chat_id, mesg_id)
+            printMotd(chat_id, mesg_id)
         else:
             motd_cmd = mesg[5:].strip()
             if(not schat_id in motds.keys()):
@@ -644,16 +792,15 @@ def doHandleMotd(bot, chat_id, mesg, mesg_id):
                     f.close()
             except Exception as ex:
                 logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-                pass
 
-            bot.sendMessage(chat_id = chat_id, text = today_str + ' 今日重點已更新：\n' + motds[schat_id]['msg'], reply_to_message_id = mesg_id)
+            sendGenericMesg(chat_id, mesg_id, strs['r_motd_updated'].format(date = today_str))
     elif (mesg_low == '/motd' or '本日重點' in mesg_low or '今日重點' in mesg_low or '今天重點' in mesg_low):
-        printMotd(bot, chat_id, mesg_id)
+        printMotd(chat_id, mesg_id)
     else:
         logging.debug('wtf?!')
 
-def printMotd(bot, chat_id, mesg_id):
-    global motds
+def printMotd(chat_id, mesg_id):
+    global bot, motds, strs
     schat_id = str(chat_id)
 
     if(schat_id in motds.keys()):
@@ -662,12 +809,11 @@ def printMotd(bot, chat_id, mesg_id):
         motd_date_str = '????-??-??'
 
     if(not schat_id in motds.keys()):
-        bot.sendMessage(chat_id = chat_id, text = '今天還沒有重點', reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, strs['r_motd_no'])
     if (motds[schat_id]['date'] != date.today()):
-        bot.sendMessage(chat_id = chat_id, text = '今天還沒有重點\n' +
-                                                  motd_date_str + ' 重點複習：\n' + motds[schat_id]['msg'], reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, strs['r_motd_old'].format(date = motd_date_str, motd = motds[schat_id]['msg']))
     else:
-        bot.sendMessage(chat_id = chat_id, text = motd_date_str + ' 今日重點：\n' + motds[schat_id]['msg'], reply_to_message_id = mesg_id)
+        sendGenericMesg(chat_id, mesg_id, strs['r_motd_ok'].format(date = motd_date_str, motd = motds[schat_id]['msg']))
 
 if __name__ == '__main__':
     main()

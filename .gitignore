@@ -3,3 +3,5 @@ config.json
 motd.json
 *.log
 .DS_Store
+strings.json
+gnn_washsnake.json

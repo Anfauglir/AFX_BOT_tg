@@ -1,7 +1,8 @@
 {
+  "strings_json": "strings.example.json",
   "bot_token" : "XXXXXXX",
   "resp_db" :  "resp_db.example.sqlite",
   "adm_ids" : [12345678],
   "limited_chats": [-98765432, -11111111],
-  "motd_only": [-11111111]
+  "only_motd": [-11111111]
 }
