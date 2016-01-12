@@ -32,5 +32,16 @@
   
   "r_invasive_wash_snake_strs": [
     "FUCK YOU WASH SNAKE!"
-  ]
+  ],
+  
+  "q_motd_kws": [
+    "MOTD?"
+  ],
+  
+  "v_photo_bulkupload": "!!!DO_PHOTOS_UPLOAD_NOW",
+  "vr_photo_bulkupload_no_file": "No photos in /images/...",
+  
+  "r_roll_cmd_help": "/roll [ max (1000) | min-max (20-30) | (count)d(type)[+-(modifier)] (2d6, 1d20+12) | (count)d(type)s(success) (2d6s4) ]",
+  
+  "x_fortune_salt_str": "^_^ADD_SOME_SALT##$$%Y__??__%m__!!__%d**&&MORE__SALT^_^"
 }
