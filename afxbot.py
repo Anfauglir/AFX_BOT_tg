@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# coding=UTF-8
-# 
+## coding=UTF-8
+#
 # AFX_bot: a simple Telegram bot in Python
 # Copyright (C) 2016 Anfauglir Kz. <anfauglirkz@gmail.com>
-# 
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -41,18 +41,18 @@ from pathlib import Path
 class WashSnake:
     """
     This object describes a anti-flood stat for given user.
-    
+
     Attributes:
         firsttime (datetime):
         content (str):
         responded (bool):
-        
+
         repeattimes (Optional[int]):
     """
 
-    def __init__(self, 
-                 firsttime, 
-                 content, 
+    def __init__(self,
+                 firsttime,
+                 content,
                  repeattimes=0):
         self.firsttime = firsttime
         self.content = content
@@ -64,7 +64,7 @@ class afx_bot:
     """
     This object represents a working Telegram bot.
     """
-    
+
     def __init__(self, **kwargs):
         # Base. ;)
         self.LAST_UPDATE_ID = None
@@ -93,8 +93,13 @@ class afx_bot:
 
         # Hardcoded fortune...
         self.fortune_strs = ['大凶', '凶', '平', '小吉', '大吉']
-        self.fortune_types = ['昨日', '今日', '明日']
+        self.fortune_types = { '大前天': -3, '大後天': 3, \
+                             '前天': -2, '昨日': -1, '昨天': -1, \
+                             '今日': 0, '今天': 0,
+                             '明日': 1, '明天': 1, '後天': 2}
 
+        self.fortune_keys = sorted(self.fortune_types.keys(), \
+                      key = lambda x: len(x), reverse = True)
         # Hardcoded Strings...
         self.wash_snake_strs_unified = None
         self.log_fmt_str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -128,7 +133,7 @@ class afx_bot:
             self.config['operational_chats'] = self.checkAndInitEmptyList(self.config['operational_chats'])
             self.config['motd_only_chats'] = self.checkAndInitEmptyList(self.config['motd_only_chats'])
             self.config['invasive_washsnake_chats'] = self.checkAndInitEmptyList(self.config['invasive_washsnake_chats'])
-            
+
             self.initResp()
         except FileNotFoundError:
             logging.exception('config file not found!')
@@ -138,7 +143,7 @@ class afx_bot:
             raise
         except:
             raise
-            
+
         try:
             with open(self.config['strings_json'], 'r', encoding = 'utf8') as f:
                 self.strs = json.loads(f.read())
@@ -146,7 +151,7 @@ class afx_bot:
         except:
             logging.exception('L10N Strings read error!')
             raise
-            
+
         # Telegram Bot Authorization Token
         self.bot = telegram.Bot(self.config['bot_token'])
 
@@ -166,6 +171,8 @@ class afx_bot:
             motds = dict()
         except:
             raise
+
+        self.registerCallbacks()
 
     # run...
     def run(self):
@@ -201,7 +208,7 @@ class afx_bot:
                 recoverStatus = True
                 self.LAST_UPDATE_ID = self.LAST_UPDATE_ID + 1
 
-    def json_serial(self, 
+    def json_serial(self,
                     obj):
         """
         Returns:
@@ -218,7 +225,7 @@ class afx_bot:
 
     def getLatestUpdateId(self):
         """
-        Get latest update id from Telegram server. 
+        Get latest update id from Telegram server.
         Gonna ignore all previous updates... ;)
         """
         try:
@@ -228,21 +235,22 @@ class afx_bot:
             logging.exception('!!! Get Last update ID Error !!!')
             self.LAST_UPDATE_ID = None
 
-    def checkAndInitEmptyList(self, 
+    def checkAndInitEmptyList(self,
                               snake):
         """
-        Returns: 
+        Returns:
             A empty list if snake is None, otherwise snake itself.
         """
         if(snake == None):
             return []
         else:
             return snake
-            
+
     def initResp(self):
         """
         Read all keywords/symptoms from self.resp_db.
         """
+        self.logger.debug('Initializing response...')
         self.resp_db = sqlite3.connect(self.config['resp_db'])
         self.resp_db.row_factory = sqlite3.Row
         c = self.resp_db.cursor()
@@ -271,7 +279,7 @@ class afx_bot:
         self.unified_kw_list = self.kw_list + list(self.symptom_tbl.keys())
         self.unified_get_list = self.kw_list_get + list(self.symptom_get.keys())
 
-    def sendGenericMesg(self, 
+    def sendGenericMesg(self,
                         chat_id,
                         mesg_id,
                         text):
@@ -292,21 +300,18 @@ class afx_bot:
             mesg_id = update.message.message_id
             user_id = update.message.from_user.id
             update_id = update.update_id
-            
+
             if (message):
                 # YOU SHALL NOT PASS!
                 # Only authorized group chats and users (admins) can access this bot.
-                if(not self.doOperationalAuth(update.message.chat.id)):
+                if(not self.doAugmentedAuth(update.message.chat.id)):
                     self.logger.debug('Access denied from: ' + str(update.message.chat.id))
-                    self.LAST_UPDATE_ID = update_id + 1
-                    continue
 
-                if(self.handleWashsnake(update)):
-                    self.LAST_UPDATE_ID = update_id + 1
-                    continue
+                elif(self.handleWashsnake(update)):
+                    do_nothing = 1
 
                 # Status querying.
-                if (self.strs['q_status_kw'] in message):
+                elif (self.strs['q_status_kw'] in message):
                     if(self.is_running):
                         self.sendGenericMesg(chat_id, mesg_id, self.strs['qr_status_t'])
                     else:
@@ -320,10 +325,10 @@ class afx_bot:
 
                 # MOTDs are necessary.
                 elif (message.lower().startswith('/motd') or self.isHandleMotd(message)):
-                    self.handleMotd(chat_id, message, mesg_id)
+                    self.handleMotd(update)
 
                 # Only MOTD for some special groups, otherwise...
-                elif (self.is_running and not chat_id in self.config['motd_only_chats']):
+                elif (self.is_running and self.doOperationalAuth(update.message.chat.id)):
                     # Batch update *.jpg in /images/
                     if (message.startswith(self.strs['v_photo_bulkupload']) and self.doAdmAuth(user_id)):
                         p = Path('images')
@@ -338,63 +343,23 @@ class afx_bot:
 
                                 photo_mesg = photo_res.photo[-1].file_id
                                 self.sendGenericMesg(chat_id, photo_res.message_id, photo_mesg)
-                    
-                    # Reload keyword table etc...
-                    elif (self.doMatchAndExecute(update, self.strs['a_reload_kwlist_kw'], True, \
-                          self.strs['ar_reload_kwlist_ok'], self.strs['ar_reload_kwlist_ng'], \
-                          lambda: self.initResp())):
-                        nothing = 1
-                        
+
+
+                    # Reload keyword table
                     # Disable bot
-                    elif (self.doMatchAndExecute(update, self.strs['s_status_f_kw'], True, \
-                          self.strs['sr_status_f_ok'], self.strs['sr_status_f_ng'], \
-                          lambda: self.setIsRunning(False))):
-                        nothing = 1
-                        
                     # Enter photo upload mode
-                    elif (self.doMatchAndExecute(update, self.strs['s_imgupload_t_kw'], True, \
-                          self.strs['sr_imgupload_t_ok'], self.strs['sr_imgupload_t_ng'], \
-                          lambda: self.setIsAcceptingPhotos(True))):
-                        nothing = 1
-                        
                     # Exit photo upload mode
-                    elif (self.doMatchAndExecute(update, self.strs['s_imgupload_f_kw'], True, \
-                          self.strs['sr_imgupload_f_ok'], self.strs['sr_imgupload_f_ng'], \
-                          lambda: self.setIsAcceptingPhotos(False))):
-                        nothing = 1
-
                     # Handle ADM commands
-                    elif (self.doMatchAndExecute(update, '/adm', True, None, None, \
-                          lambda **kwargs: self.handleAdmCmd(**kwargs), \
-                          chat_id = chat_id, mesg = message, mesg_id = mesg_id)):
-                        nothing = 1
-
                     # Handle commands
-                    elif (self.doMatchAndExecute(update, '/', False, None, None, \
-                          lambda **kwargs: self.handleCmd(**kwargs), \
-                          chat_id = chat_id, mesg = message, mesg_id = mesg_id, restricted = False)):
+                    # Handle fortune tell
+                    elif (self.executeCallbacks(self.bot_callbacks, update)):
                         nothing = 1
 
-                    # Fortune teller
-                    elif(self.doCheckAndExecute(update, self.matchFortuneType(message) != None, False, None, None, \
-                         lambda **kwargs: self.handleFortuneTell(**kwargs), \
-                         chat_id = chat_id, user_id = user_id, mesg_id = mesg_id, type = self.matchFortuneType(message))):
-                        nothing = 1
-                    
                     # other...
                     else:
-                        self.handleResponse(chat_id, message, mesg_id, user_id)
+                        self.handleResponse(update)
                 elif (self.is_running):
-                    # Handle commands
-                    if (self.doMatchAndExecute(update, '/', False, None, None, \
-                          lambda **kwargs: self.handleCmd(**kwargs), \
-                          chat_id = chat_id, mesg = message, mesg_id = mesg_id, restricted = True)):
-                        nothing = 1
-
-                    # Fortune teller
-                    elif(self.doCheckAndExecute(update, self.matchFortuneType(message) != None, False, None, None, \
-                         lambda **kwargs: self.handleFortuneTell(**kwargs), \
-                         chat_id = chat_id, user_id = user_id, mesg_id = mesg_id, type = self.matchFortuneType(message))):
+                    if (self.executeCallbacks(self.bot_callbacks_restricted, update)):
                         nothing = 1
                 else:
                     self.logger.debug('Not running...')
@@ -427,18 +392,19 @@ class afx_bot:
                 return True
         return False
 
-    def matchFortuneType(self, 
+    def matchFortuneType(self,
                          mesg):
         """
         Returns:
             Strings in self.fortune_types found in mesg, otherwise None.
         """
-        for fs in self.fortune_types:
+
+        for fs in self.fortune_keys:
             if (fs + '運勢') in mesg:
                 return fs
         return None
 
-    def doAdmAuth(self, 
+    def doAdmAuth(self,
                   id):
         """
         Returns:
@@ -446,21 +412,31 @@ class afx_bot:
         """
         return id in self.config['adm_ids']
 
-    def doOperationalAuth(self, 
+    def doOperationalAuth(self,
                           id):
         """
         Returns:
-            Presence of id in self.config['operational_chats'], 
-                              self.config['adm_ids'], 
+            Presence of id in self.config['operational_chats'],
+                              self.config['adm_ids']
+        """
+        return id in self.config['operational_chats'] \
+               or id in self.config['adm_ids']
+
+    def doAugmentedAuth(self,
+                          id):
+        """
+        Returns:
+            Presence of id in self.config['operational_chats'],
+                              self.config['adm_ids'],
                               or self.config['motd_only_chats'].
         """
         return id in self.config['operational_chats'] \
                or id in self.config['adm_ids'] \
                or id in self.config['motd_only_chats']
 
-    def appendMoreSmile(self, 
-                        str, 
-                        rl = 1, 
+    def appendMoreSmile(self,
+                        str,
+                        rl = 1,
                         ru = 3):
         """
         Returns:
@@ -468,21 +444,19 @@ class afx_bot:
         """
         return str + '\U0001F603' * random.randint(rl, ru)
 
-    def handleAdmCmd(self, 
-                     chat_id, 
-                     mesg, 
-                     mesg_id):
+    def handleAdmCmd(self,
+                     update):
         """
         Handles all administrative commands.
-        
+
         Args:
-            chat_id (int): 
-                Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
-            mesg (str):
-                Text content of given update to handle.
-            mesg_id (int):
-                Message ID of given update to handle.
+            update (telegram.update):
+                Update object to handle.
         """
+        chat_id = update.message.chat_id
+        mesg = update.message.text
+        mesg_id = update.message.message_id
+
         cmd_toks = [x.strip() for x in mesg.split(' ')]
         cmd_entity = cmd_toks[1].lower()
 
@@ -549,7 +523,7 @@ class afx_bot:
                     kw = self.symptom_get[kw]
                 else:
                     outmesg += '{0} => \n'.format(kw)
-                
+
                 c.execute('''SELECT cont, tag FROM resp_get WHERE keyword = ? ORDER BY IIDX DESC;''', (kw, ))
                 for conts in c:
                     if conts['tag'] == None :
@@ -599,7 +573,7 @@ class afx_bot:
                 self.sendGenericMesg(chat_id, mesg_id, 'Not implemented.\n({0} -> {1}) => …'.format(kw_before, kw_after))
             else:
                 not_implemented = 1
-                
+
        # make symptom -> keyword
         # ^/adm\s+mk_sym\s+([^\s]+)\s+([^\s]+).*$
         elif(cmd_entity == 'mk_get_sym'):
@@ -623,14 +597,19 @@ class afx_bot:
             s_keys = self.symptom_tbl.keys()
             if(len(cmd_toks) > 2):
                 outmesg = ''
-                if (not kw in s_keys):
-                    kw = cmd_toks[2].lower()
+
+                kw = cmd_toks[2].lower()
+                if(kw in self.symptom_get.keys()):
+                    outmesg += '({0} -> {1}) => \n'.format(kw, self.symptom_tbl[kw])
+                    kw = self.symptom_tbl[kw]
+                else:
+                    outmesg += '{0} => \n'.format(kw)
 
                 c.execute('''SELECT cont FROM resp WHERE keyword = ? ORDER BY IIDX DESC;''', (kw, ))
                 for conts in c:
                     outmesg += conts['cont'] + '\n'
 
-                self.sendGenericMesg(chat_id, mesg_id, kw + ' => \n' + outmesg )
+                self.sendGenericMesg(chat_id, mesg_id, outmesg)
 
             else:
                 outmesg = 'Supported keywords:\n'
@@ -646,33 +625,27 @@ class afx_bot:
         else:
             self.sendGenericMesg(chat_id, mesg_id, 'adm what? owo')
 
-    def handleCmd(self, 
-                 chat_id, 
-                 mesg, 
-                 mesg_id, 
-                 restricted = False): 
+    def handleCmd(self,
+                 update):
         """
         Handles all common commands.
-        
+
         Args:
-            chat_id (int): 
-                Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
-            mesg (str):
-                Text content of given update to handle.
-            mesg_id (int):
-                Message ID of given update to handle.
-            restricted (Optional[bool]):
-                Restrict accessing sensitive commands from specified user/group chats.
-                
+            update (telegram.update):
+                Update object to handle.
         Returns:
             True when the command is handled, otherwise False.
         """
+        chat_id = update.message.chat_id
+        restricted = not chat_id in self.config['operational_chats']
+        mesg = update.message.text
+        mesg_id = update.message.message_id
         mesg_low = mesg.lower().replace('@afx_bot', '')
 
         cmd_toks = [x.strip() for x in mesg.split(' ')]
         if (mesg_low.startswith('/get ') and not restricted):
             keyword = cmd_toks[1]
-        
+
             if (len(cmd_toks) > 2):
                 tag = cmd_toks[2]
                 self.logger.debug('keyword: ' + keyword)
@@ -680,18 +653,18 @@ class afx_bot:
             else:
                 tag = None
                 self.logger.debug('keyword: ' + keyword)
-            
+
             if (keyword in self.symptom_get.keys()):
                 keyword = self.symptom_get[keyword]
 
             if (keyword in self.kw_list_get):
                 c = self.resp_db.cursor()
                 x = None
-                
+
                 if(tag != None):
                     c.execute('''SELECT cont FROM resp_get WHERE keyword = ? AND tag = ? ORDER BY RANDOM() LIMIT 1;''', ( keyword, tag, ))
                     x = c.fetchone()
-                    
+
                 if(tag == None or x == None):
                     c.execute('''SELECT cont FROM resp_get WHERE keyword = ? ORDER BY RANDOM() LIMIT 1;''', ( keyword, ))
                     x = c.fetchone()
@@ -707,31 +680,25 @@ class afx_bot:
             return True
 
         elif (mesg_low.startswith('/roll ') or mesg_low == '/roll'):
-            return self.handleRoll(chat_id, mesg_low, mesg_id)
+            return self.handleRoll(update)
 
         return False
 
-    def handleResponse(self, 
-                       chat_id, 
-                       mesg, 
-                       mesg_id, 
-                       user_id):
+    def handleResponse(self,
+                       update):
         """
         Handles all typical responses.
-        
+
         Args:
-            chat_id (int): 
-                Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
-            mesg (str):
-                Text content of given update to handle.
-            mesg_id (int):
-                Message ID of given update to handle.
-            user_id (int):
-                User ID of given update to handle.
-                
+            update (telegram.update):
+                Update object to handle.
         Returns:
             True when the command is handled, otherwise False.
         """
+        chat_id = update.message.chat_id
+        mesg = update.message.text
+        mesg_id = update.message.message_id
+        user_id = update.message.from_user.id
         mesg_low = mesg.lower()
 
         # hardcoded...
@@ -764,21 +731,19 @@ class afx_bot:
 
         return False
 
-    def handleRoll(self, 
-                   chat_id, 
-                   mesg_low, 
-                   mesg_id):
+    def handleRoll(self,
+                   update):
         """
         Handles /roll commands.
-        
+
         Args:
-            chat_id (int): 
-                Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
-            mesg_low (str):
-                Text content in lowercase of given update to handle.
-            mesg_id (int):
-                Message ID of given update to handle.
+            update (telegram.update):
+                Update object to handle.
         """
+        chat_id = update.message.chat_id
+        mesg_low = update.message.text.lower()
+        mesg_id = update.message.message_id
+
         if (mesg_low == '/roll'):
             d_cmd = ''
         else:
@@ -860,31 +825,29 @@ class afx_bot:
             self.sendGenericMesg(chat_id, mesg_id, self.strs['r_roll_cmd_help'])
             return True
 
-    def handleFortuneTell(self, 
-                          chat_id, 
-                          user_id, 
-                          mesg_id, 
-                          type):
+    def handleFortuneTell(self,
+                          update):
         """
         Handles fortune tell requests.
-        
+
         Args:
-            chat_id (int): 
-                Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
-            mesg_id (int):
-                Message ID of given update to handle.
-            user_id (int):
-                User ID of given update to handle.
-            type (str):
-                Requested fortune type (today, tomorrow, yesterday...).
+            update (telegram.update):
+                Update object to handle.
         """
+        chat_id = update.message.chat_id
+        mesg = update.message.text
+        mesg_id = update.message.message_id
+        user_id = update.message.from_user.id
+        type = self.matchFortuneType(mesg)
+
         md5 = hashlib.md5()
 
         fortune_date = date.today()
-        if(type == '明日'):
-            fortune_date = fortune_date+timedelta(days=1)
-        elif (type == '昨日'):
-            fortune_date = fortune_date-timedelta(days=1)
+        date_offset = self.fortune_types[type]
+        if(date_offset >= 0):
+            fortune_date = fortune_date+timedelta(days=date_offset)
+        else:
+            fortune_date = fortune_date-timedelta(days=(-date_offset))
 
         f_data = bytearray(str(user_id) + datetime.strftime(fortune_date, self.strs['x_fortune_salt_str']), 'utf-8')
 
@@ -893,21 +856,19 @@ class afx_bot:
         self.sendGenericMesg(chat_id, mesg_id, fstr)
 
 
-    def handleMotd(self, 
-                   chat_id, 
-                   mesg,    
-                   mesg_id):
+    def handleMotd(self,
+                   update):
         """
         Handles MotD query and update requests.
-        
+
         Args:
-            chat_id (int): 
-                Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
-            mesg (str):
-                Text content of given update to handle.
-            mesg_id (int):
-                Message ID of given update to handle.
+            update (telegram.update):
+                Update object to handle.
         """
+        chat_id = update.message.chat_id
+        mesg = update.message.text
+        mesg_id = update.message.message_id
+
         mesg_low = mesg.lower().replace('@afx_bot', '')
         mesg = mesg.replace('@afx_bot', '')
         schat_id = str(chat_id)
@@ -917,7 +878,7 @@ class afx_bot:
                 self.sendMotd(chat_id, mesg_id)
             else:
                 motd_cmd = mesg[5:].strip()
-                    
+
                 if(not schat_id in self.motds.keys()):
                     self.motds[schat_id] = dict()
 
@@ -943,14 +904,14 @@ class afx_bot:
                 if(m in mesg):
                     self.sendMotd(chat_id, mesg_id)
 
-    def sendMotd(self, 
-                  chat_id, 
+    def sendMotd(self,
+                  chat_id,
                   mesg_id):
         """
         Send MotD content to given chat or user.
-        
+
         Args:
-            chat_id (int): 
+            chat_id (int):
                 Unique identifier for the message recipient - telegram.User or telegram.GroupChat id.
             mesg_id (int):
                 Message ID of given update to handle.
@@ -969,15 +930,15 @@ class afx_bot:
         else:
             self.sendGenericMesg(chat_id, mesg_id, self.strs['r_motd_ok'].format(date = motd_date_str, motd = self.motds[schat_id]['msg']))
 
-    def handleWashsnake(self, 
+    def handleWashsnake(self,
                         update):
         """
         Handles anti-flood responses.
-        
+
         Args:
-            update (Telegram.Update):
-                Update object to handle in anti-flood machanism.
-                
+            update (telegram.update):
+                Update object to handle.
+
         Returns:
             True when anti-flood response is sent, otherwise False.
         """
@@ -987,7 +948,7 @@ class afx_bot:
         date = update.message.date
         mesg_id = update.message.message_id
         user_id = update.message.from_user.id
-        
+
         schat_id = str(chat_id)
         suser_id = str(user_id)
         washsnake_content = message.lower().strip()
@@ -1028,103 +989,173 @@ class afx_bot:
             else:
                 self.logger.debug('update wash for ' + suser_id)
                 self.wash_record[schat_id][suser_id] = WashSnake(update.message.date, washsnake_content)
-        
+
         return False
-        
-    def doMatchAndExecute(self, 
-                          update, 
-                          q_kw, 
-                          need_adm = True, 
-                          r_ok = None, 
-                          r_ng = None, 
-                          handler = None, 
-                          **kwargs):
-        """
-        Execute handler when given keyword is found in given update.
-        
-        Args:
-            update (Telegram.Update):
-                Update object to determine handler will be run or not.
-            q_kw (str):
-                Keyword to match in message text in update.
-            need_adm (bool):
-                Indicates that the handler needs administrator privilege to run.
-            r_ok (Optional[str]):
-                Response message when the handler runs successfully.
-            r_ng (Optional[str]):
-                Response message when the handle does not run due to lack of privilege.
-            handler (func(**kwargs)):
-                The Handler that will be called.
-            **kwargs:
-                Arguments which will be passed to the handler.
-                
-        Returns:
-            True when given q_kw is found into message text, otherwise false.
-        """
-        mesg = update.message.text
-        return self.doCheckAndExecute(update, mesg.startswith(q_kw), need_adm, r_ok, r_ng, handler, **kwargs)
-            
-    def doCheckAndExecute(self, 
-                          update, 
-                          cond, 
-                          need_adm = True, 
-                          r_ok = None, 
-                          r_ng = None, 
-                          handler = None, 
-                          **kwargs):
-        """
-        Execute handler when given keyword is found in given update.
-        
-        Args:
-            update (Telegram.Update):
-                Update object to determine handler will be run or not.
-            cond (bool):
-                Condition for running the handler.
-            need_adm (bool):
-                Indicates that the handler needs administrator privilege to run.
-            r_ok (Optional[str]):
-                Response message when the handler runs successfully.
-            r_ng (Optional[str]):
-                Response message when the handle does not run due to lack of privilege.
-            handler (func(**kwargs)):
-                The Handler that will be called.
-            **kwargs:
-                Arguments which will be passed to the handler.
 
-        Returns:
-            True when the handler is runned, otherwise False.
-        """
-        chat_id = update.message.chat_id
-        mesg_id = update.message.message_id
-        user_id = update.message.from_user.id
-        
-        if(cond):
-            if((self.doAdmAuth(user_id) and need_adm) or not need_adm):
-                if(handler != None):
-                    handler(**kwargs)
-
-                if(r_ok != None):
-                    self.sendGenericMesg(chat_id, mesg_id, r_ok)
-                
-                return True
-            else:
-                if(r_ng != None):
-                    self.sendGenericMesg(chat_id, mesg_id, r_ng)
-            
-                return True
-        else:
-            return False
-            
-    def setIsRunning(self, 
+    def setIsRunning(self,
                      flag):
         """Assign flag to is_running."""
         self.is_running = flag
-    
-    def setIsAcceptingPhotos(self, 
+
+    def setIsAcceptingPhotos(self,
                              flag):
         """Assign flag to is_accepting_photos."""
         self.is_accepting_photos = flag
-            
+
+    def executeCallbacks(self, bcblist, update):
+        """Run registered callbacks."""
+        for bcb in bcblist:
+            if(bcb.execute(update)):
+                return True
+        return False
+
+    def registerCallbacks(self):
+        self.bot_callbacks_restricted = [
+            self.BotCallback('call_cmd_handler_bcb',
+                             self,
+                             {'q_kw': '/'},
+                             False,
+                             lambda update: self.handleCmd(update)),
+
+            self.BotCallback('call_fortune_teller_bcb',
+                             self,
+                             { },
+                             False,
+                             lambda update: self.handleFortuneTell(update),
+                             lambda update: self.matchFortuneType(update.message.text))
+        ]
+
+        self.bot_callbacks = [
+            self.BotCallback('reload_kw_bcb',
+                             self,
+                             {'q_kw': self.strs['a_reload_kwlist_kw'],
+                              'r_ok': self.strs['ar_reload_kwlist_ok'],
+                              'r_ng': self.strs['ar_reload_kwlist_ng']},
+                             True,
+                             lambda update: self.initResp()),
+
+            self.BotCallback('set_running_f_bcb',
+                             self,
+                             {'q_kw': self.strs['s_status_f_kw'],
+                              'r_ok': self.strs['sr_status_f_ok'],
+                              'r_ng': self.strs['sr_status_f_ng']},
+                             True,
+                             lambda update: self.initResp(False)),
+
+            self.BotCallback('set_imgupload_t_bcb',
+                             self,
+                             {'q_kw': self.strs['s_imgupload_t_kw'],
+                              'r_ok': self.strs['sr_imgupload_t_ok'],
+                              'r_ng': self.strs['sr_imgupload_t_ng']},
+                             True,
+                             lambda update: self.setIsAcceptingPhotos(True)),
+
+            self.BotCallback('set_imgupload_f_bcb',
+                             self,
+                             {'q_kw': self.strs['s_imgupload_f_kw'],
+                              'r_ok': self.strs['sr_imgupload_f_ok'],
+                              'r_ng': self.strs['sr_imgupload_f_ng']},
+                             True,
+                             lambda update: self.setIsAcceptingPhotos(False)),
+
+            self.BotCallback('call_adm_cmd_handler_bcb',
+                             self,
+                             {'q_kw': '/adm'},
+                             True,
+                             lambda update: self.handleAdmCmd(update)),
+
+            self.BotCallback('call_cmd_handler_bcb',
+                             self,
+                             {'q_kw': '/'},
+                             False,
+                             lambda update: self.handleCmd(update)),
+
+            self.BotCallback('call_fortune_teller_bcb',
+                             self,
+                             { },
+                             False,
+                             lambda update: self.handleFortuneTell(update),
+                             lambda update: self.matchFortuneType(update.message.text))
+        ]
+
+    class BotCallback:
+        """
+        This object describes a conditional callback.
+
+        Execute handler when given keyword is found in given update.
+
+        Attributes:
+            name (str):
+                Name of this callback
+            bot (Telegram.bot):
+                Bot to handle requests
+            need_adm (bool):
+                Indicates that the handler needs administrator privilege to run.
+            strs (dict):
+                Dict to record strings.
+                'q_kw': Keyword to match in message text.
+                'r_ok': Response message when the handler ran successfully.
+                'r_ng': Response message when the handler encountered permssion denied.
+            handler_callback (func(update)):
+                The Handler that will be called.
+            cond_callback (Optional[func(update)]):
+                The callback function will be called for checking whether to run or not.
+        """
+
+        def __init__(self,
+                     name,
+                     bot,
+                     strs,
+                     need_adm,
+                     handler_callback,
+                     cond_callback = None,):
+            self.name = name
+            self.bot = bot
+            self.strs = strs
+            self.need_adm = need_adm
+            self.handler_callback = handler_callback
+            self.cond_callback = cond_callback
+
+
+        def execute(self, update):
+            mesg = update.message.text
+            chat_id = update.message.chat_id
+            mesg_id = update.message.message_id
+            user_id = update.message.from_user.id
+
+            self.bot.logger.debug('Execute callback: ' + self.name)
+
+            if('q_kw' in self.strs.keys()):
+                self.bot.logger.debug('Method: String matching')
+                cond = mesg.startswith(self.strs['q_kw'])
+            else:
+                self.bot.logger.debug('Method: cond_callback')
+                cond = self.cond_callback(update)
+
+            self.bot.logger.debug('cond = ' + str(cond))
+            if(cond):
+                if((self.bot.doAdmAuth(user_id) and self.need_adm) or not self.need_adm):
+                    self.bot.logger.debug('auth ok or no need auth')
+                    if(self.handler_callback != None):
+                        self.bot.logger.debug('handler_callback != None')
+                        self.handler_callback(update)
+
+                    if('r_ok' in self.strs.keys()):
+                        self.bot.logger.debug('sending ok message')
+                        self.bot.sendGenericMesg(chat_id, mesg_id, self.strs['r_ok'])
+
+                    return True
+                else:
+                    self.bot.logger.debug('auth ng')
+                    if('r_ok' in self.strs.keys()):
+                        self.bot.logger.debug('sending ng message')
+                        self.bot.sendGenericMesg(chat_id, mesg_id, self.strs['r_ng'])
+
+                    return True
+            else:
+                self.bot.logger.debug('not running handler.')
+                return False
+
 def main():
     bot = afx_bot()
     bot.run()
