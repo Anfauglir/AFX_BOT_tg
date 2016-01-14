@@ -63,11 +63,19 @@ class WashSnake:
 class afx_bot:
     """
     This object represents a working Telegram bot.
+
+
+    Arguments:
+    conf_file_name (Optional[str]):
+        Name of configuration file.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self,
+                 conf_file_name = None,
+                 **kwargs):
         # Base. ;)
         self.LAST_UPDATE_ID = None
+        self.NOW_HANDLING_UPDATE_ID = None
         self.logger = logging.getLogger()
         self.bot = None
         self.motds = None
@@ -118,21 +126,40 @@ class afx_bot:
         self.logger = logging.getLogger('AFX_bot')
         self.logger.setLevel(logging.DEBUG)
 
-        # initialization
+        self.initConfiguration(conf_file_name)
+        self.initL10NStrings()
+        self.initMotD()
+
+        # Telegram Bot Authorization Token
+        self.bot = telegram.Bot(self.config['bot_token'])
+
+        self.registerCallbacks()
+
+    def initConfiguration(self,
+                          file_name):
+        """
+        Initialize configuration.
+
+        Arguments:
+            file_name (str):
+                Name of configuration file.
+        """
+        # Load Configuration
+        if(file_name == None):
+            file_name = 'config.json'
+
         try:
-            with open('config.json', 'r', encoding = 'utf8') as f:
+            with open(file_name, 'r', encoding = 'utf8') as f:
                 self.config = json.loads(f.read())
 
-            # check self.configurations
-            if(self.config['bot_token'] == None
-                or self.config['resp_db'] == None
-                or self.config['adm_ids'] == None
-                or self.config['strings_json'] == None):
-                raise ValueError
+            # Check Configuration
+            configs_check = ['bot_token', 'resp_db', 'adm_ids', 'operational_chats', 'strings_json']
+            for c in configs_check:
+                self.checkConfigEntry(c)
 
-            self.config['operational_chats'] = self.checkAndInitEmptyList(self.config['operational_chats'])
-            self.config['motd_only_chats'] = self.checkAndInitEmptyList(self.config['motd_only_chats'])
-            self.config['invasive_washsnake_chats'] = self.checkAndInitEmptyList(self.config['invasive_washsnake_chats'])
+            list_configs_check = ['motd_only_chats', 'invasive_washsnake_chats']
+            for c in list_configs_check:
+                self.checkConfigEntryOfList(c)
 
             self.initResp()
         except FileNotFoundError:
@@ -144,6 +171,21 @@ class afx_bot:
         except:
             raise
 
+    def initL10NStrings(self,
+                        file_name = None):
+        """
+        Initialize L10N strings.
+
+        Arguments:
+            file_name (Optional[str]):
+                Name of L10N strings file.
+        """
+        # Load L10N Strings (forced now)
+        if(file_name == None):
+            file_name = self.config['strings_json']
+            if(file_name == None):
+                raise Exception('L10N file not specified in neither config nor argument!')
+
         try:
             with open(self.config['strings_json'], 'r', encoding = 'utf8') as f:
                 self.strs = json.loads(f.read())
@@ -152,11 +194,18 @@ class afx_bot:
             logging.exception('L10N Strings read error!')
             raise
 
-        # Telegram Bot Authorization Token
-        self.bot = telegram.Bot(self.config['bot_token'])
+    def initMotD(self,
+                 file_name = 'motd.json'):
+        """
+        Initialize MotD.
 
+        Arguments:
+            file_name (Optional[str]):
+                Name of MotD file.
+        """
+        # Load MotD
         try:
-            with open('motd.json', 'r', encoding = 'utf8') as f:
+            with open(file_name, 'r', encoding = 'utf8') as f:
                 self.motds = json.loads(f.read())
 
             # str -> datetime
@@ -165,48 +214,70 @@ class afx_bot:
 
         except FileNotFoundError:
             logging.exception('MOTD file not found!')
-            motds = dict()
         except ValueError:
             logging.exception('MOTD read error!')
-            motds = dict()
         except:
             raise
 
-        self.registerCallbacks()
+        if(self.motds == None):
+            self.motds = dict()
 
-    # run...
+    def checkConfigEntry(self,
+                         name):
+        """
+        Check whether the config is sane.
+        """
+        if(self.config[name] == None):
+            logging.error('config[\'{0}\'] is missing!')
+            raise ValueError
+
+    def checkConfigEntryOfList(self,
+                               name):
+        """
+        Check whether the list in config is sane, or init a empty one.
+        """
+        if(self.config[name] == None):
+            self.config[name] = []
+
     def run(self):
         """
         Run the bot: start the loop to fetch updates and handle.
         """
         self.getLatestUpdateId()
-        recoverStatus = False
+        self.recoverStatus = False
 
         while True:
             # This will be our global variable to keep the latest update_id when requesting
             # for updates. It starts with the latest update_id if available.
             try:
-                if(recoverStatus == True):
+                if(self.recoverStatus == True):
                     # try to reinit...
                     self.bot = telegram.Bot(self.config['bot_token'])
                     self.getLatestUpdateId()
-                    recoverStatus = False
+                    self.recoverStatus = False
 
                 self.getMesg()
             except KeyboardInterrupt:
                 exit()
             except http.client.HTTPException:
                 logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-                recoverStatus = True
-                self.LAST_UPDATE_ID = self.LAST_UPDATE_ID + 1
+                self.recover()
             except urllib.error.HTTPError:
                 logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-                recoverStatus = True
-                self.LAST_UPDATE_ID = self.LAST_UPDATE_ID + 1
+                self.recover()
             except Exception as ex:
                 logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
-                recoverStatus = True
-                self.LAST_UPDATE_ID = self.LAST_UPDATE_ID + 1
+                self.recover()
+
+    def recover(self):
+        """
+        Recover the bot in next loop.
+        """
+        self.recoverStatus = True
+        if(self.NOW_HANDLING_UPDATE_ID != None):
+            self.LAST_UPDATE_ID = self.NOW_HANDLING_UPDATE_ID + 1
+        else:
+            self.LAST_UPDATE_ID = self.LAST_UPDATE_ID + 1
 
     def json_serial(self,
                     obj):
@@ -229,22 +300,17 @@ class afx_bot:
         Gonna ignore all previous updates... ;)
         """
         try:
-            self.LAST_UPDATE_ID = self.bot.getUpdates(timeout = 10)[-1].update_id
-            self.LAST_UPDATE_ID = self.bot.getUpdates(offset=self.LAST_UPDATE_ID, timeout = 10)[-1].update_id
+            updates = self.bot.getUpdates(timeout = 10)
+            self.logger.debug('update length: {0}'.format(len(updates)))
+            if(len(updates) == 1):
+                self.LAST_UPDATE_ID = updates[-1].update_id
+            else:
+                while(len(updates) > 1):
+                    self.LAST_UPDATE_ID = updates[-1].update_id
+                    updates = self.bot.getUpdates(offset=self.LAST_UPDATE_ID+1, timeout = 10)
+                    self.logger.debug('update length: {0}'.format(len(updates)))
         except:
-            logging.exception('!!! Get Last update ID Error !!!')
-            self.LAST_UPDATE_ID = None
-
-    def checkAndInitEmptyList(self,
-                              snake):
-        """
-        Returns:
-            A empty list if snake is None, otherwise snake itself.
-        """
-        if(snake == None):
-            return []
-        else:
-            return snake
+            self.logger.exception('!!! Get Last update ID Error !!!')
 
     def initResp(self):
         """
@@ -299,16 +365,18 @@ class afx_bot:
             message = update.message.text
             mesg_id = update.message.message_id
             user_id = update.message.from_user.id
-            update_id = update.update_id
+            self.NOW_HANDLING_UPDATE_ID = update.update_id
+
+            self.logger.debug('now handling update: {0}'.format(self.NOW_HANDLING_UPDATE_ID))
 
             if (message):
                 # YOU SHALL NOT PASS!
                 # Only authorized group chats and users (admins) can access this bot.
                 if(not self.doAugmentedAuth(update.message.chat.id)):
-                    self.logger.debug('Access denied from: ' + str(update.message.chat.id))
+                    self.logger.info('Access denied from: ' + str(update.message.chat.id))
 
                 elif(self.handleWashsnake(update)):
-                    do_nothing = 1
+                    nothing_todo = 1
 
                 # Status querying.
                 elif (self.strs['q_status_kw'] in message):
@@ -347,20 +415,17 @@ class afx_bot:
 
                     # Reload keyword table
                     # Disable bot
-                    # Enter photo upload mode
-                    # Exit photo upload mode
-                    # Handle ADM commands
-                    # Handle commands
-                    # Handle fortune tell
+                    # Enter/Exit photo upload mode
+                    # Handle ADM cmd/Common cmd/Fortune tell
                     elif (self.executeCallbacks(self.bot_callbacks, update)):
-                        nothing = 1
+                        nothing_todo = 1
 
                     # other...
                     else:
                         self.handleResponse(update)
                 elif (self.is_running):
                     if (self.executeCallbacks(self.bot_callbacks_restricted, update)):
-                        nothing = 1
+                        nothing_todo = 1
                 else:
                     self.logger.debug('Not running...')
 
@@ -379,7 +444,7 @@ class afx_bot:
             #    self.logger.debug('NotHandleContent: ' + str(update.message));
 
             # Updates global offset to get the new updates
-            self.LAST_UPDATE_ID = update_id + 1
+            self.LAST_UPDATE_ID = self.NOW_HANDLING_UPDATE_ID + 1
 
     def isHandleMotd(self,
                      mesg):
@@ -490,7 +555,7 @@ class afx_bot:
                 self.resp_db.commit()
                 self.initResp()
             except TelegramError:
-                self.sendGenericMesg(chat_id, photo_res.message_id, 'ERROR ON : {1} => {2}'.format(kw, id))
+                self.sendGenericMesg(chat_id, photo_res.message_id, 'ERROR ON : {0} => {1}'.format(kw, id))
 
         # Get picture directly by designate file ID.
         elif(cmd_entity == 'getpic'):
@@ -499,7 +564,7 @@ class afx_bot:
             try:
                 photo_res = self.bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = id);
             except TelegramError:
-                self.sendGenericMesg(chat_id, photo_res.message_id, 'ERROR ON : {1}'.format(id))
+                self.sendGenericMesg(chat_id, photo_res.message_id, 'ERROR ON : {0}'.format(id))
 
         elif(cmd_entity == 'ed_get'):
             not_implemented = 1
@@ -637,7 +702,7 @@ class afx_bot:
             True when the command is handled, otherwise False.
         """
         chat_id = update.message.chat_id
-        restricted = not chat_id in self.config['operational_chats']
+        restricted = not self.doOperationalAuth(chat_id)
         mesg = update.message.text
         mesg_id = update.message.message_id
         mesg_low = mesg.lower().replace('@afx_bot', '')
@@ -957,7 +1022,8 @@ class afx_bot:
 
         # random angry...
         if(random.randint(1, 1000) >= 995 and chat_id in self.config['invasive_washsnake_chats']):
-            self.sendGenericMesg(chat_id, mesg_id, random.choice(self.wash_snake_strs_unified))
+            self.logger.debug('random angry triggered for {0} - {1}'.format(chat_id, mesg_id))
+            self.sendGenericMesg(chat_id, mesg_id, random.choice(self.strs['r_invasive_random_angry_strs']))
         elif(not suser_id in self.wash_record[schat_id].keys()):
             self.logger.debug('new washsnake content for ' + suser_id)
             self.wash_record[schat_id][suser_id] = WashSnake(date, washsnake_content)
@@ -979,7 +1045,6 @@ class afx_bot:
                                 self.sendGenericMesg(chat_id, mesg_id, random.choice(self.strs['r_wash_snake_strs']))
                             self.wash_record[schat_id][suser_id].responded = True
 
-                        self.LAST_UPDATE_ID = update.update_id + 1
                         return True
                 else:
                     # reset wash snake counter...
@@ -1157,7 +1222,7 @@ class afx_bot:
                 return False
 
 def main():
-    bot = afx_bot()
+    bot = afx_bot('config.json')
     bot.run()
 
 if __name__ == '__main__':
