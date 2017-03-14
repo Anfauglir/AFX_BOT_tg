@@ -4,3 +4,8 @@ afxbot_tg.sqlite
 config.json
 motd.json
 strings.json
+build/
+dist/
+.idea/
+.ropeproject
+*.egg-info/

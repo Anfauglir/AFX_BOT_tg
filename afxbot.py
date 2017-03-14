@@ -60,7 +60,8 @@ class WashSnake:
         self.responded = False
         self.repeattimes = repeattimes
 
-class afx_bot:
+
+class AFXBot:
     """
     This object represents a working Telegram bot.
 
@@ -82,7 +83,7 @@ class afx_bot:
         self.config = None
         self.strs = None
 
-        # Keyword and Sympotom lists.
+        # Keyword and Symptom lists.
         self.kw_list = None
         self.kw_list_get = None
         self.symptom_tbl = None
@@ -118,7 +119,7 @@ class afx_bot:
 
         args = arg_parser.parse_args()
 
-        if(args.logfile):
+        if args.logfile:
             logging.basicConfig( level=logging.DEBUG, format=self.log_fmt_str, filename=args.logfile)
         else:
             logging.basicConfig( level=logging.DEBUG, format=self.log_fmt_str)
@@ -126,19 +127,20 @@ class afx_bot:
         self.logger = logging.getLogger('AFX_bot')
         self.logger.setLevel(logging.DEBUG)
 
-        self.initConfiguration(conf_file_name)
-        self.initL10NStrings()
-        self.initMotD()
+        self.init_configuration(conf_file_name)
+        self.init_l10n_strings()
+        self.init_motd()
 
         # Telegram Bot Authorization Token
         self.bot = telegram.Bot(self.config['bot_token'])
 
-        self.registerCallbacks()
+        self.register_callbacks()
 
         self.recognition_list = []
 
-    def initHanbaoPetProperties(self):
-        if(file_name == None):
+    def init_hanbao_pet_properties(self, 
+	                               file_name = None):
+        if not file_name:
             file_name = 'hanbao_pet.json'
 
         try:
@@ -161,10 +163,8 @@ class afx_bot:
         except:
             raise
 
-
-
-    def initConfiguration(self,
-                          file_name):
+    def init_configuration(self,
+                           file_name):
         """
         Initialize configuration.
 
@@ -173,7 +173,7 @@ class afx_bot:
                 Name of configuration file.
         """
         # Load Configuration
-        if(file_name == None):
+        if not file_name:
             file_name = 'config.json'
 
         try:
@@ -183,13 +183,13 @@ class afx_bot:
             # Check Configuration
             configs_check = ['bot_token', 'resp_db', 'adm_ids', 'operational_chats', 'strings_json']
             for c in configs_check:
-                self.checkConfigEntry(c)
+                self.check_config_entry(c)
 
             list_configs_check = ['restricted_chats', 'motd_only_chats', 'invasive_washsnake_chats']
             for c in list_configs_check:
-                self.checkConfigEntryOfList(c)
+                self.check_config_entry_of_list(c)
 
-            self.initResp()
+            self.init_resp()
         except FileNotFoundError:
             logging.exception('config file not found!')
             raise
@@ -199,8 +199,8 @@ class afx_bot:
         except:
             raise
 
-    def initL10NStrings(self,
-                        file_name = None):
+    def init_l10n_strings(self,
+                          file_name = None):
         """
         Initialize L10N strings.
 
@@ -209,9 +209,9 @@ class afx_bot:
                 Name of L10N strings file.
         """
         # Load L10N Strings (forced now)
-        if(file_name == None):
+        if not file_name:
             file_name = self.config['strings_json']
-            if(file_name == None):
+            if not file_name:
                 raise Exception('L10N file not specified in neither config nor argument!')
 
         try:
@@ -222,8 +222,8 @@ class afx_bot:
             logging.exception('L10N Strings read error!')
             raise
 
-    def initMotD(self,
-                 file_name = 'motd.json'):
+    def init_motd(self,
+                  file_name = 'motd.json'):
         """
         Initialize MotD.
 
@@ -247,44 +247,44 @@ class afx_bot:
         except:
             raise
 
-        if(self.motds == None):
+        if not self.motds:
             self.motds = dict()
 
-    def checkConfigEntry(self,
-                         name):
+    def check_config_entry(self,
+                           name):
         """
         Check whether the config is sane.
         """
-        if(self.config[name] == None):
+        if not self.config[name]:
             logging.error('config[\'{0}\'] is missing!')
             raise ValueError
 
-    def checkConfigEntryOfList(self,
-                               name):
+    def check_config_entry_of_list(self,
+                                   name):
         """
         Check whether the list in config is sane, or init a empty one.
         """
-        if(self.config[name] == None):
+        if not self.config[name]:
             self.config[name] = []
 
     def run(self):
         """
         Run the bot: start the loop to fetch updates and handle.
         """
-        self.getLatestUpdateId()
+        self.get_latest_update_id()
         self.recoverStatus = False
 
         while True:
             # This will be our global variable to keep the latest update_id when requesting
             # for updates. It starts with the latest update_id if available.
             try:
-                if(self.recoverStatus == True):
+                if self.recoverStatus:
                     # try to reinit...
                     self.bot = telegram.Bot(self.config['bot_token'])
-                    self.getLatestUpdateId()
+                    self.get_latest_update_id()
                     self.recoverStatus = False
 
-                self.getMesg()
+                self.get_mesg()
             except KeyboardInterrupt:
                 exit()
             except http.client.HTTPException:
@@ -302,7 +302,7 @@ class afx_bot:
         Recover the bot in next loop.
         """
         self.recoverStatus = True
-        if(self.NOW_HANDLING_UPDATE_ID != None):
+        if self.NOW_HANDLING_UPDATE_ID:
             self.LAST_UPDATE_ID = self.NOW_HANDLING_UPDATE_ID + 1
         else:
             self.LAST_UPDATE_ID = self.LAST_UPDATE_ID + 1
@@ -322,7 +322,7 @@ class afx_bot:
             return serial
         raise TypeError ("Type not serializable")
 
-    def getLatestUpdateId(self):
+    def get_latest_update_id(self):
         """
         Get latest update id from Telegram server.
         Gonna ignore all previous updates... ;)
@@ -330,7 +330,7 @@ class afx_bot:
         try:
             updates = self.bot.getUpdates(timeout = 10)
             self.logger.debug('update length: {0}'.format(len(updates)))
-            if(len(updates) == 1):
+            if len(updates) == 1:
                 self.LAST_UPDATE_ID = updates[-1].update_id
             else:
                 while(len(updates) > 1):
@@ -340,7 +340,7 @@ class afx_bot:
         except:
             self.logger.exception('!!! Get Last update ID Error !!!')
 
-    def initResp(self):
+    def init_resp(self):
         """
         Read all keywords/symptoms from self.resp_db.
         """
@@ -373,16 +373,16 @@ class afx_bot:
         self.unified_kw_list = self.kw_list + list(self.symptom_tbl.keys())
         self.unified_get_list = self.kw_list_get + list(self.symptom_get.keys())
 
-    def sendGenericMesg(self,
-                        chat_id,
-                        text,
-                        reply_to_message_id = None):
+    def send_generic_mesg(self,
+                          chat_id,
+                          text,
+                          reply_to_message_id = None):
         """
         For sending simple messages only including text (in most cases.)
         """
         self.bot.sendMessage(chat_id = chat_id, text = text, reply_to_message_id = reply_to_message_id)
 
-    def getMesg(self):
+    def get_mesg(self):
         """
         Fetch updates from server for further processes.
         """
@@ -397,104 +397,110 @@ class afx_bot:
             self.NOW_HANDLING_UPDATE_ID = update.update_id
 
             self.logger.debug('now handling update: {0}'.format(self.NOW_HANDLING_UPDATE_ID))
-
-            if (message):
-                # YOU SHALL NOT PASS!
-                # Only authorized group chats and users (admins) can access this bot.
-                if(not self.doAugmentedAuth(update.message.chat.id)):
-                    if ('__FOR_RECOGNITION__' in message and not update.message.chat.id in self.recognition_list):
-                        self.sendGenericMesg(chat_id, 'Please contact moderator to add following id into ACL.')
-                        self.sendGenericMesg(chat_id, str(update.message.chat.id))
-                        self.recognition_list.append(update.message.chat.id)
-                    else:
-                        self.logger.info('Access denied from: ' + str(update.message.chat.id))
-
-                elif(self.handleWashsnake(update)):
-                    nothing_todo = 1
-
-                # Status querying.
-                elif (self.strs['q_status_kw'] in message):
-                    if(self.is_running):
-                        self.sendGenericMesg(chat_id, self.strs['qr_status_t'], mesg_id)
-                    else:
-                        self.sendGenericMesg(chat_id, self.strs['qr_status_f'], mesg_id)
-
-                # Only admins can re-enable bot.
-                elif (not self.is_running and message.startswith(self.strs['s_status_t_kw']) and self.doAdmAuth(user_id)):
-                    self.sendGenericMesg(chat_id, self.strs['sr_status_t_ok'], mesg_id)
-                    self.initResp()
-                    self.is_running = True
-
-                # MOTDs are necessary.
-                elif (message.lower().startswith('/motd') or self.isHandleMotd(message)):
-                    self.handleMotd(update)
-
-                # Only MOTD for some special groups, otherwise...
-                elif (self.is_running and self.doOperationalAuth(update.message.chat.id)):
-                    # Batch update *.jpg in /images/
-                    if (message.startswith(self.strs['v_photo_bulkupload']) and self.doAdmAuth(user_id)):
-                        p = Path('images')
-                        fl = list(p.glob('*.jpg'))
-                        if(len(fl) == 0):
-                            self.sendGenericMesg(chat_id, self.strs['vr_photo_bulkupload_no_file'], mesg_id)
+            
+            try:
+                if message:
+                    # YOU SHALL NOT PASS!
+                    # Only authorized group chats and users (admins) can access this bot.
+                    if not self.do_augmented_auth(update.message.chat.id):
+                        if '__FOR_RECOGNITION__' in message and not update.message.chat.id in self.recognition_list:
+                            self.send_generic_mesg(chat_id, 'Please contact moderator to add following id into ACL.')
+                            self.send_generic_mesg(chat_id, str(update.message.chat.id))
+                            self.recognition_list.append(update.message.chat.id)
                         else:
-                            for image_name in fl:
-                                # for uploading new photos
-                                with open(str(image_name), 'rb') as nn:
-                                    photo_res = self.bot.sendPhoto(chat_id = chat_id, photo = nn)
+                            self.logger.info('Access denied from: ' + str(update.message.chat.id))
 
-                                photo_mesg = photo_res.photo[-1].file_id
-                                self.sendGenericMesg(chat_id, photo_mesg, photo_res.message_id)
-
-
-                    # Reload keyword table
-                    # Disable bot
-                    # Enter/Exit photo upload mode
-                    # Handle ADM cmd/Common cmd/Fortune tell
-                    elif (self.executeCallbacks(self.bot_callbacks, update)):
+                    elif self.handle_washsnake(update):
                         nothing_todo = 1
 
-                    # other...
+                    # Status querying.
+                    elif self.strs['q_status_kw'] in message:
+                        if self.is_running:
+                            self.send_generic_mesg(chat_id, self.strs['qr_status_t'], mesg_id)
+                        else:
+                            self.send_generic_mesg(chat_id, self.strs['qr_status_f'], mesg_id)
+
+                    # Only admins can re-enable bot.
+                    elif not self.is_running and message.startswith(self.strs['s_status_t_kw']) and self.do_adm_auth(user_id):
+                        self.send_generic_mesg(chat_id, self.strs['sr_status_t_ok'], mesg_id)
+                        self.init_resp()
+                        self.is_running = True
+
+                    # MOTDs are necessary.
+                    elif message.lower().startswith('/motd') or self.is_handle_motd(message):
+                        self.handle_motd(update)
+
+                    # Only MOTD for some special groups, otherwise...
+                    elif self.is_running and self.do_operational_auth(update.message.chat.id):
+                        # Batch update *.jpg in /images/
+                        if message.startswith(self.strs['v_photo_bulkupload']) and self.do_adm_auth(user_id):
+                            p = Path('images')
+                            fl = list(p.glob('*.jpg'))
+                            if len(fl) == 0:
+                                self.send_generic_mesg(chat_id, self.strs['vr_photo_bulkupload_no_file'], mesg_id)
+                            else:
+                                for image_name in fl:
+                                    # for uploading new photos
+                                    with open(str(image_name), 'rb') as nn:
+                                        photo_res = self.bot.sendPhoto(chat_id = chat_id, photo = nn)
+
+                                    photo_mesg = photo_res.photo[-1].file_id
+                                    self.send_generic_mesg(chat_id, photo_mesg, photo_res.message_id)
+
+
+                        # Reload keyword table
+                        # Disable bot
+                        # Enter/Exit photo upload mode
+                        # Handle ADM cmd/Common cmd/Fortune tell
+                        elif self.execute_callbacks(self.bot_callbacks, update):
+                            nothing_todo = 1
+
+                        # other...
+                        else:
+                            self.handle_response(update)
+                    elif self.is_running and update.message.chat.id in self.config['restricted_chats']:
+                        if self.execute_callbacks(self.bot_callbacks_restricted, update):
+                            nothing_todo = 1
+                    elif self.is_running:
+                        self.logger.debug('Not handling, in motd_only chats?')
                     else:
-                        self.handleResponse(update)
-                elif (self.is_running and update.message.chat.id in self.config['restricted_chats']):
-                    if (self.executeCallbacks(self.bot_callbacks_restricted, update)):
+                        self.logger.debug('Not running...')
+
+                # upload photo, adm only
+                elif update.message.photo and self.is_accepting_photos and self.do_adm_auth(user_id):
+                    try:
+                        self.logger.debug('PhotoContent: ' + update.message.photo[-1].file_id);
+                        photo_mesg = update.message.photo[-1].file_id
+                        photo_res = self.bot.sendPhoto(chat_id = chat_id, photo = photo_mesg)
+                        photo_mesg = photo_res.photo[-1].file_id
+                        self.send_generic_mesg(chat_id, photo_mesg, photo_res.message_id)
+                    except:
                         nothing_todo = 1
-                elif (self.is_running):
-                    self.logger.debug('Not handling, in motd_only chats?')
-                else:
-                    self.logger.debug('Not running...')
 
-            # upload photo, adm only
-            elif (update.message.photo != None and self.is_accepting_photos and self.doAdmAuth(user_id)):
-                try:
-                    self.logger.debug('PhotoContent: ' + update.message.photo[-1].file_id);
-                    photo_mesg = update.message.photo[-1].file_id
-                    photo_res = self.bot.sendPhoto(chat_id = chat_id, photo = photo_mesg)
-                    photo_mesg = photo_res.photo[-1].file_id
-                    self.sendGenericMesg(chat_id, photo_mesg, photo_res.message_id)
-                except:
-                    nothing_todo = 1
-
-            #else:
-            #    self.logger.debug('NotHandleContent: ' + str(update.message));
+                #else:
+                #    self.logger.debug('NotHandleContent: ' + str(update.message));
+            except:
+                if chat_id != None and mesg_id != None:
+                    self.send_generic_mesg(chat_id, self.append_more_smiles('好像哪裡怪怪der '), mesg_id)
+                    
+                self.logger.exception('')
 
             # Updates global offset to get the new updates
             self.LAST_UPDATE_ID = self.NOW_HANDLING_UPDATE_ID + 1
 
-    def isHandleMotd(self,
-                     mesg):
+    def is_handle_motd(self,
+                       mesg):
         """
         Returns:
             True when strings in self.strs['q_motd_kws'] found in mesg, otherwise False.
         """
         for m in self.strs['q_motd_kws']:
-            if(m in mesg):
+            if m in mesg:
                 return True
         return False
 
-    def matchFortuneType(self,
-                         mesg):
+    def match_fortune_type(self,
+                           mesg):
         """
         Returns:
             Strings in self.fortune_types found in mesg, otherwise None.
@@ -505,16 +511,16 @@ class afx_bot:
                 return fs
         return None
 
-    def doAdmAuth(self,
-                  id):
+    def do_adm_auth(self,
+                    id):
         """
         Returns:
             Presence of id in self.config['adm_ids'].
         """
         return id in self.config['adm_ids']
 
-    def doOperationalAuth(self,
-                          id):
+    def do_operational_auth(self,
+                            id):
         """
         Returns:
             Presence of id in self.config['operational_chats'],
@@ -523,7 +529,7 @@ class afx_bot:
         return id in self.config['operational_chats'] \
                or id in self.config['adm_ids']
 
-    def doAugmentedAuth(self,
+    def do_augmented_auth(self,
                           id):
         """
         Returns:
@@ -537,19 +543,18 @@ class afx_bot:
                or id in self.config['restricted_chats'] \
                or id in self.config['motd_only_chats']
 
-
-    def appendMoreSmile(self,
-                        str,
-                        rl = 1,
-                        ru = 3):
+    def append_more_smiles(self,
+                           str,
+                           rl = 1,
+                           ru = 3):
         """
         Returns:
             str with smiles in amount of random(rl, ru) appended on the tail.
         """
         return str + '\U0001F603' * random.randint(rl, ru)
 
-    def handleAdmCmd(self,
-                     update):
+    def handle_adm_cmd(self,
+                                         update):
         """
         Handles all administrative commands.
 
@@ -562,67 +567,76 @@ class afx_bot:
         mesg_id = update.message.message_id
 
         cmd_toks = [x.strip() for x in mesg.split(' ')]
+        while '' in cmd_toks:
+            cmd_toks.remove('')
+
         cmd_entity = cmd_toks[1].lower()
 
         c = self.resp_db.cursor()
         self.logger.debug('cmd_entity: ' + cmd_entity)
 
+
         # 憨包來吃圖
-        if(cmd_entity == 'begin_get'):
-            self.setIsAcceptingPhotos(True)
+        if cmd_entity == 'begin_get':
+            self.set_is_accepting_photos(True)
 
         # 憨包吃飽沒
-        elif(cmd_entity == 'end_get'):
-            self.setIsAcceptingPhotos(False)
+        elif cmd_entity == 'end_get':
+            self.set_is_accepting_photos(False)
 
-        elif(cmd_entity == 'mk_get'):
-            id = cmd_toks[2]
+        elif cmd_entity == 'mk_get':
+            # for multi-group.
+            gid = chat_id
+            if gid > 0:
+                gid = -1
+                
+            pic_id = cmd_toks[2]
             kw = cmd_toks[3].lower()
-            if (len(cmd_toks) > 4):
+            if len(cmd_toks) > 4:
                 tag = cmd_toks[4].lower()
             else:
                 tag = None
             try:
+                self.logger.debug('Photo ID = ' + cmd_toks[2])
                 photo_res = self.bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = cmd_toks[2]);
-                if(kw in self.symptom_get.keys()):
-                    self.sendGenericMesg(chat_id, '({0} -> {1}) => {2}'.format(kw, self.symptom_get[kw], id), mphoto_res.message_id)
+                if kw in self.symptom_get.keys():
+                    self.send_generic_mesg(chat_id, '({0} -> {1}) => {2}'.format(kw, self.symptom_get[kw], pic_id), photo_res.message_id)
                     kw = self.symptom_get[kw]
                 else:
-                    self.sendGenericMesg(chat_id, '{0}  => {1}'.format(kw, id), photo_res.message_id)
+                    self.send_generic_mesg(chat_id, '{0}    => {1}'.format(kw, pic_id), photo_res.message_id)
 
-                c.execute('''INSERT INTO resp_get (keyword, cont, tag) VALUES (?, ?, ?) ''', ( kw, id, tag, ))
+                c.execute('''INSERT INTO resp_get (keyword, cont, tag, gid) VALUES (?, ?, ?, ?) ''', ( kw, pic_id, tag, gid))
                 self.resp_db.commit()
-                self.initResp()
+                self.init_resp()
             except TelegramError:
-                self.sendGenericMesg(chat_id, 'ERROR ON : {0} => {1}'.format(kw, id), photo_res.message_id)
+                self.send_generic_mesg(chat_id, 'ERROR ON : {0} => {1}'.format(kw, pic_id), photo_res.message_id)
 
-        # Get picture directly by designate file ID.
-        elif(cmd_entity == 'getpic'):
-            id = cmd_toks[2]
+        elif cmd_entity == 'getpic_id':
+            pic_id = cmd_toks[2]
 
             try:
-                photo_res = self.bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = id);
+                photo_res = self.bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = pic_id);
             except TelegramError:
-                self.sendGenericMesg(chat_id, 'ERROR ON : {0}'.format(id), photo_res.message_id)
+                self.send_generic_mesg(chat_id, 'ERROR ON : {0}'.format(pic_id), photo_res.message_id)
 
-        elif(cmd_entity == 'ed_get'):
+        elif cmd_entity == 'ed_get':
             not_implemented = 1
 
         # make get symptom -> keyword
-        elif(cmd_entity == 'mk_get_sym'):
-            if(len(cmd_toks) > 3):
+        elif cmd_entity == 'mk_get_sym':
+            if len(cmd_toks) > 3:
                 kw_before = cmd_toks[2].lower()
                 kw_after = cmd_toks[3].lower()
             else:
                 not_implemented = 1
 
         # list /get kw
-        elif(cmd_entity == 'ls_get'):
-            if(len(cmd_toks) > 2):
+        elif cmd_entity == 'ls_get':
+            if len(cmd_toks) > 2:
                 outmesg = ''
                 kw = cmd_toks[2].lower()
 
-                if(kw in self.symptom_get.keys()):
+                if kw in self.symptom_get.keys():
                     outmesg += '({0} -> {1}) => \n'.format(kw, self.symptom_get[kw])
                     kw = self.symptom_get[kw]
                 else:
@@ -630,103 +644,120 @@ class afx_bot:
 
                 c.execute('''SELECT IIDX, cont, tag FROM resp_get WHERE keyword = ? ORDER BY IIDX ASC;''', (kw, ))
                 for conts in c:
-                    if conts['tag'] == None :
-                        outmesg += str(conts['IIDX']) + '. ' + conts['cont'] + ' (N/A)\n'
+                    if not conts['tag']:
+                        outmesg += '/getid_' + str(conts['IIDX']) + ' : ' + conts['cont'][:8] + '...' + conts['cont'][-8:] + ' (N/A)\n'
                     else:
-                        outmesg += str(conts['IIDX']) + '. ' + conts['cont'] + ' (' + conts['tag'] + ')\n'
+                        outmesg += '/getid_' + str(conts['IIDX']) + ' : ' + conts['cont'][:8] + '...' + conts['cont'][-8:] + '(' + conts['tag'] + ')\n'
 
-                self.sendGenericMesg(chat_id, outmesg, mesg_id)
+                self.send_generic_mesg(chat_id, outmesg, mesg_id)
 
-            else:
+            else: 
                 outmesg = 'Supported /get keywords:\n'
                 s_keys = self.symptom_get.keys()
                 for kw in self.unified_get_list:
 
-                    if (kw in s_keys):
+                    if kw in s_keys:
                         outmesg = outmesg + kw + ' -> ' + self.symptom_get[kw] + '\n'
                     else:
                         outmesg = outmesg + kw + '\n'
 
-                self.sendGenericMesg(chat_id, outmesg, mesg_id)
+                self.send_generic_mesg(chat_id, outmesg, mesg_id)
 
         # make keyword -> content
         # ^/adm\s+mk_kw\s+([^\s]+)\s+(.+)$
-        elif(cmd_entity == 'mk_kw'):
-            if(len(cmd_toks) > 3):
+        elif cmd_entity == 'mk_kw':
+            if len(cmd_toks) > 3:
                 kw = cmd_toks[2].lower()
                 content = mesg[(mesg.find(cmd_toks[2]) + len(cmd_toks[2]) + 1):].strip()
 
-                if(kw in self.symptom_tbl.keys()):
-                    self.sendGenericMesg(chat_id, '({0} -> {1}) => {2}'.format(kw, self.symptom_tbl[kw], content), mesg_id)
+                if kw in self.symptom_tbl.keys():
+                    self.send_generic_mesg(chat_id, '({0} -> {1}) => {2}'.format(kw, self.symptom_tbl[kw], content), mesg_id)
                     kw = self.symptom_tbl[kw]
                 else:
-                    self.sendGenericMesg(chat_id, '{0}  => {1}'.format(kw, content), mesg_id)
+                    self.send_generic_mesg(chat_id, '{0}    => {1}'.format(kw, content), mesg_id)
 
                 c.execute('''INSERT INTO resp (keyword, cont) VALUES (?, ?) ''', ( kw, content, ))
                 self.resp_db.commit()
-                self.initResp()
+                self.init_resp()
             else:
-                self.sendGenericMesg(chat_id, 'arglist err.', mesg_id)
+                self.send_generic_mesg(chat_id, 'arglist err.', mesg_id)
 
         # make symptom -> keyword
         # ^/adm\s+mk_sym\s+([^\s]+)\s+([^\s]+).*$
-        elif(cmd_entity == 'mk_sym'):
-            if(len(cmd_toks) > 3):
+        elif cmd_entity == 'mk_sym':
+            if len(cmd_toks) > 3:
                 kw_before = cmd_toks[2].lower()
                 kw_after = cmd_toks[3].lower()
 
-                if(kw_before in self.symptom_tbl.keys()):
-                    self.sendGenericMesg(chat_id, 'Already exists: ({0} -> …) => …'.format(kw_before), mesg_id)
-                elif(kw_before in self.kw_list):
-                    self.sendGenericMesg(chat_id, 'Already exists: {0} => …'.format(kw_before), mesg_id)
+                if kw_before in self.symptom_tbl.keys():
+                    self.send_generic_mesg(chat_id, 'Already exists: ({0} -> …) => …'.format(kw_before), mesg_id)
+                elif kw_before in self.kw_list:
+                    self.send_generic_mesg(chat_id, 'Already exists: {0} => …'.format(kw_before), mesg_id)
                 else:
-                    self.sendGenericMesg(chat_id, '{0}  => {1}'.format(kw_before, kw_after), mesg_id)
+                    self.send_generic_mesg(chat_id, '{0}    => {1}'.format(kw_before, kw_after), mesg_id)
                     c.execute('''INSERT INTO symptom (before, after) VALUES (?, ?) ''', ( kw_before, kw_after, ))
                     self.resp_db.commit()
-                    self.initResp()
+                    self.init_resp()
             else:
-                self.sendGenericMesg(chat_id, 'arglist err.', mesg_id)
+                self.send_generic_mesg(chat_id, 'arglist err.', mesg_id)
 
-       # make symptom -> keyword
+         # make symptom -> keyword
         # ^/adm\s+mk_sym\s+([^\s]+)\s+([^\s]+).*$
-        elif(cmd_entity == 'mk_get_sym'):
-            if(len(cmd_toks) > 3):
+        elif cmd_entity == 'mk_get_sym':
+            if len(cmd_toks) > 3:
                 kw_before = cmd_toks[2].lower()
                 kw_after = cmd_toks[3].lower()
 
-                self.sendGenericMesg(chat_id, 'Not implemented.\n({0} -> {1}) => …'.format(kw_before, kw_after), mesg_id)
+                self.send_generic_mesg(chat_id, 'Not implemented.\n({0} -> {1}) => …'.format(kw_before, kw_after), mesg_id)
             else:
-                self.sendGenericMesg(chat_id, 'arglist err.', mesg_id)
+                self.send_generic_mesg(chat_id, 'arglist err.', mesg_id)
 
         # todo: assign index for each kw -> cont pair.
-        elif(cmd_entity == 'rm_kw'):
-            if(len(cmd_toks) > 2):
+        elif cmd_entity == 'rm_kw':
+            if len(cmd_toks) > 2:
                 try:
                     to_rm = int(cmd_toks[2].lower())
 
                     c.execute('''DELETE FROM resp WHERE IIDX = ? ''', ( to_rm, ))
                     self.resp_db.commit()
-                    self.initResp()
+                    self.init_resp()
 
-                    self.sendGenericMesg(chat_id, str(to_rm) + ' deleted.', mesg_id)
+                    self.send_generic_mesg(chat_id, str(to_rm) + ' deleted.', mesg_id)
 
                 except ValueError:
-                    self.sendGenericMesg(chat_id, 'arg err.', mesg_id)
+                    self.send_generic_mesg(chat_id, 'arg err.', mesg_id)
 
             else:
-                self.sendGenericMesg(chat_id, 'arglist err.', mesg_id)
+                self.send_generic_mesg(chat_id, 'arglist err.', mesg_id)
+                
+        elif cmd_entity == 'rm_get':
+            if len(cmd_toks) > 2:
+                try:
+                    to_rm = int(cmd_toks[2].lower())
 
-        elif(cmd_entity == 'rm_get_sym'):
+                    c.execute('''DELETE FROM resp_get WHERE IIDX = ? ''', ( to_rm, ))
+                    self.resp_db.commit()
+                    self.init_resp()
+
+                    self.send_generic_mesg(chat_id, str(to_rm) + ' deleted.', mesg_id)
+
+                except ValueError:
+                    self.send_generic_mesg(chat_id, 'arg err.', mesg_id)
+
+            else:
+                self.send_generic_mesg(chat_id, 'arglist err.', mesg_id)
+
+        elif cmd_entity == 'rm_get_sym':
             not_implemented = 1
 
         # list keyword
-        elif(cmd_entity == 'ls_kw'):
+        elif cmd_entity == 'ls_kw':
             s_keys = self.symptom_tbl.keys()
-            if(len(cmd_toks) > 2):
+            if len(cmd_toks) > 2:
                 outmesg = ''
 
                 kw = cmd_toks[2].lower()
-                if(kw in self.symptom_get.keys()):
+                if kw in self.symptom_get.keys():
                     outmesg += '({0} -> {1}) => \n'.format(kw, self.symptom_tbl[kw])
                     kw = self.symptom_tbl[kw]
                 else:
@@ -736,24 +767,24 @@ class afx_bot:
                 for conts in c:
                     outmesg += str(conts['IIDX']) + '. ' + conts['cont'] + '\n'
 
-                self.sendGenericMesg(chat_id, outmesg, mesg_id)
+                self.send_generic_mesg(chat_id, outmesg, mesg_id)
 
             else:
                 outmesg = 'Supported keywords:\n'
                 for kw in self.unified_kw_list:
 
-                    if (kw in s_keys):
+                    if kw in s_keys:
                         outmesg = outmesg + kw + ' -> ' + self.symptom_tbl[kw] + '\n'
                     else:
                         outmesg = outmesg + kw + '\n'
 
-                self.sendGenericMesg(chat_id, outmesg, mesg_id)
+                self.send_generic_mesg(chat_id, outmesg, mesg_id)
 
         else:
-            self.sendGenericMesg(chat_id, 'adm what? owo', mesg_id)
+            self.send_generic_mesg(chat_id, 'adm what? owo', mesg_id)
 
-    def handleCmd(self,
-                 update):
+    def handle_cmd(self,
+                   update):
         """
         Handles all common commands.
 
@@ -764,16 +795,19 @@ class afx_bot:
             True when the command is handled, otherwise False.
         """
         chat_id = update.message.chat_id
-        restricted = not self.doOperationalAuth(chat_id)
+        restricted = not self.do_operational_auth(chat_id)
         mesg = update.message.text
         mesg_id = update.message.message_id
         mesg_low = mesg.lower().replace('@afx_bot', '')
 
         cmd_toks = [x.strip() for x in mesg.split(' ')]
-        if (mesg_low.startswith('/get ') and not restricted):
+        while '' in cmd_toks:
+            cmd_toks.remove('')
+
+        if mesg_low.startswith('/get ') and not restricted:
             keyword = cmd_toks[1].lower()
 
-            if (len(cmd_toks) > 2):
+            if len(cmd_toks) > 2:
                 tag = cmd_toks[2].lower()
                 self.logger.debug('keyword: ' + keyword)
                 self.logger.debug('tag: ' + tag)
@@ -781,38 +815,62 @@ class afx_bot:
                 tag = None
                 self.logger.debug('keyword: ' + keyword)
 
-            if (keyword in self.symptom_get.keys()):
+            if keyword in self.symptom_get.keys():
                 keyword = self.symptom_get[keyword]
 
-            if (keyword in self.kw_list_get):
+            if keyword in self.kw_list_get:
                 c = self.resp_db.cursor()
                 x = None
 
-                if(tag != None):
+                if tag :
                     c.execute('''SELECT cont FROM resp_get WHERE keyword = ? AND tag = ? ORDER BY RANDOM() LIMIT 1;''', ( keyword, tag, ))
                     x = c.fetchone()
 
-                if(tag == None or x == None):
+                if not x:
                     c.execute('''SELECT cont FROM resp_get WHERE keyword = ? ORDER BY RANDOM() LIMIT 1;''', ( keyword, ))
                     x = c.fetchone()
 
-                self.bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = str(x['cont']));
+                if x:
+                    self.bot.sendPhoto(chat_id = chat_id, reply_to_message_id = mesg_id, photo = str(x['cont']));
+                else:
+                    self.send_generic_mesg(chat_id, 'Something goes wrong! D:', mesg_id)
             else:
-                self.sendGenericMesg(chat_id, self.appendMoreSmile('You get nothing! '), mesg_id)
+                self.send_generic_mesg(chat_id, self.append_more_smiles('You get nothing! '), mesg_id)
 
             return True
 
-        elif (mesg == '/roll@AFX_bot'):
-            self.sendGenericMesg(chat_id, self.strs['r_roll_cmd_help'], mesg_id)
+        # Get picture directly by given resp ID.
+        elif mesg_low.startswith('/getid') and not restricted:
+            if len(cmd_toks) > 1:
+                res_get_id = cmd_toks[1]
+            else:
+                res_get_id = mesg_low[7:]
+
+            c = self.resp_db.cursor()
+            c.execute('''SELECT cont FROM resp_get WHERE IIDX = ? LIMIT 1;''', (res_get_id,))
+            x = c.fetchone()
+
+            if x:
+                self.bot.sendPhoto(chat_id=chat_id, reply_to_message_id=mesg_id, photo=str(x['cont']));
+            else:
+                self.send_generic_mesg(chat_id, self.append_more_smiles('You get nothing! '), mesg_id)
+
             return True
 
-        elif (mesg_low.startswith('/roll ') or mesg_low == '/roll'):
-            return self.handleRoll(update)
+        elif mesg == '/roll@AFX_bot':
+            self.send_generic_mesg(chat_id, self.strs['r_roll_cmd_help'], mesg_id)
+            return True
 
+        elif mesg_low.startswith('/roll ') or mesg_low == '/roll':
+            return self.handle_roll(update)
+
+        elif mesg == '/crash':
+            raise Exception('Crash!')
+            
         return False
 
-    def handleResponse(self,
-                       update):
+    def handle_response(self,
+                      update):
         """
         Handles all typical responses.
 
@@ -826,21 +884,19 @@ class afx_bot:
         mesg = update.message.text
         mesg_id = update.message.message_id
         user_id = update.message.from_user.id
-        user_name = update.message.from_user.username
         mesg_low = mesg.lower()
 
         # hardcoded...
-        if ( 'ass' in mesg_low and not 'pass' in mesg_low):
-            self.sendGenericMesg(chat_id, 'Ood', mesg_id)
+        if    'ass' in mesg_low and not 'pass' in mesg_low:
+            self.send_generic_mesg(chat_id, 'Ood', mesg_id)
             return True
 
-        if ( user_id == 99786298 and chat_id == -31146195 ):
-            self.sendGenericMesg(chat_id, '喔喔', mesg_id)
+        if    user_id == 99786298 and chat_id == -1001069764018:
+            self.send_generic_mesg(chat_id, '喔喔', mesg_id)
             return True
 
-        if ( ('蕉姐' in mesg_low or '蕉姊' in mesg_low or '香蕉' in mesg_low)
-             and ('幾' in mesg_low or '多少' in mesg_low) ):
-            self.sendGenericMesg(chat_id, '3064', mesg_id)
+        if ('蕉姐' in mesg_low or '蕉姊' in mesg_low or '香蕉' in mesg_low) and ('幾' in mesg_low or '多少' in mesg_low) :
+            self.send_generic_mesg(chat_id, '3064', mesg_id)
             return True
 
 
@@ -850,7 +906,7 @@ class afx_bot:
         # convert kw
         for kw in self.unified_kw_list:
             if kw in mesg_low:
-                if (kw in s_keys):
+                if kw in s_keys:
                     unified_kw = self.symptom_tbl[kw]
                     self.logger.debug('keyword: ' + kw + ' -> ' + unified_kw)
                 else:
@@ -860,13 +916,13 @@ class afx_bot:
                 c = self.resp_db.cursor()
                 c.execute('''SELECT cont FROM resp WHERE keyword = ? ORDER BY RANDOM() LIMIT 1;''', ( unified_kw, ))
                 x = c.fetchone()
-                self.sendGenericMesg(chat_id, str(x['cont']), mesg_id)
+                self.send_generic_mesg(chat_id, str(x['cont']), mesg_id)
                 return True
 
         return False
 
-    def handleRoll(self,
-                   update):
+    def handle_roll(self,
+                                    update):
         """
         Handles /roll commands.
 
@@ -878,89 +934,93 @@ class afx_bot:
         mesg_low = update.message.text.lower()
         mesg_id = update.message.message_id
 
-        if (mesg_low == '/roll'):
+        if mesg_low == '/roll':
             d_cmd = ''
         else:
             d_cmd = mesg_low[6:].strip()
 
         # XdYsZ
         res = re.match('([0-9]+)d([0-9]+)s([0-9]+)', d_cmd)
-        if (res):
+        if res:
             dn = int(res.group(1))
             dt = int(res.group(2))
             ds = int(res.group(3))
             dstr = '('
             succ = 0
 
-            if(dn > 100): dn = 100
+            if dn > 100: dn = 100
 
             for i in range(dn):
                 val = random.randint(1, dt)
-                if (val >= ds): succ += 1
+                if val >= ds: succ += 1
                 dstr += str(val) + ', '
 
             dstr = '{0}d{1}s{2} : {3}) >= {2}, 成功 {4} 次'.format(dn, dt, ds, dstr[:-2], succ);
-            self.sendGenericMesg(chat_id, dstr, mesg_id)
+            self.send_generic_mesg(chat_id, dstr, mesg_id)
             return True
 
         # XdY[+-Z]
         res = re.match('([0-9]+)d([0-9]+)([+-][0-9]+)?', d_cmd)
-        if (res):
+        if res:
             dn = int(res.group(1))
             dt = int(res.group(2))
-            if (res.group(3) != None) :
+            if res.group(3):
                 dm = int(res.group(3))
             else:
-                dm =  0;
+                dm =    0;
 
             dstr = '('
             sum = 0
 
-            if(dn > 100): dn = 100
+            if dn > 100: dn = 100
 
             for i in range(dn):
                 val = random.randint(1, dt)
                 sum += val
                 dstr += str(val) + ', '
 
-            if (dm == 0):
+            if dm == 0:
                 dstr = '{0}d{1} : {2}) = {3}'.format(dn, dt, dstr[:-2], sum);
             else:
-                if (dm > 0):
+                if dm > 0:
                     dm_str = '+' + str(dm)
                 else:
                     dm_str = str(dm)
                 dstr = '{0}d{1}{2} : {3}) {2} = {4} {2} = {5}'.format(dn, dt, dm_str, dstr[:-2], sum, sum+dm);
-            self.sendGenericMesg(chat_id, dstr, mesg_id)
+            self.send_generic_mesg(chat_id, dstr, mesg_id)
             return True
 
         # X[-Y]
         res = re.match('([0-9]+)(-([0-9]+))?', d_cmd)
-        if (res):
-            if (res.group(3) != None):
+        if res:
+            if res.group(3):
                 dl = int(res.group(1))
                 du = int(res.group(3))
             else:
                 dl = 1
                 du = int(res.group(1))
+                
+            if dl > du:
+                self.send_generic_mesg(chat_id, self.strs['r_roll_cmd_help'], mesg_id)
+            else:
+                dstr = 'roll ({1}-{2}): {0}'.format(random.randint(dl, du), dl, du);
+                self.send_generic_mesg(chat_id, dstr, mesg_id)
 
-            dstr = 'roll ({1}-{2}): {0}'.format(random.randint(dl, du), dl, du);
-            self.sendGenericMesg(chat_id, dstr, mesg_id)
             return True
 
         # default 1-100
-        if (d_cmd == ''):
+        if d_cmd == '':
             dstr = 'roll (1-100): {0} '.format(random.randint(1,100));
-            self.sendGenericMesg(chat_id, dstr, mesg_id)
+            self.send_generic_mesg(chat_id, dstr, mesg_id)
             return True
 
         # Syntax error, sending help.
         else:
-            self.sendGenericMesg(chat_id, self.strs['r_roll_cmd_help'], mesg_id)
+            self.send_generic_mesg(chat_id, self.strs['r_roll_cmd_help'], mesg_id)
             return True
 
-    def handleFortuneTell(self,
-                          update):
+    def handle_fortune_tell(self,
+                              update):
         """
         Handles fortune tell requests.
 
@@ -972,13 +1032,13 @@ class afx_bot:
         mesg = update.message.text
         mesg_id = update.message.message_id
         user_id = update.message.from_user.id
-        type = self.matchFortuneType(mesg)
+        type = self.match_fortune_type(mesg)
 
         md5 = hashlib.md5()
 
         fortune_date = date.today()
         date_offset = self.fortune_types[type]
-        if(date_offset >= 0):
+        if date_offset >= 0:
             fortune_date = fortune_date+timedelta(days=date_offset)
         else:
             fortune_date = fortune_date-timedelta(days=(-date_offset))
@@ -987,11 +1047,11 @@ class afx_bot:
 
         md5.update(f_data)
         fstr = '{0}運勢：{1}'.format(type, self.fortune_strs[int(md5.digest()[12]) % len(self.fortune_strs)])
-        self.sendGenericMesg(chat_id, fstr, mesg_id)
+        self.send_generic_mesg(chat_id, fstr, mesg_id)
 
 
-    def handleMotd(self,
-                   update):
+    def handle_motd(self,
+                                    update):
         """
         Handles MotD query and update requests.
 
@@ -1002,8 +1062,8 @@ class afx_bot:
         chat_id = update.message.chat_id
         mesg_id = update.message.message_id
 
-        if(chat_id > 0):
-            self.sendGenericMesg(chat_id, 'MotD Function is for groups only.', mesg_id)
+        if chat_id > 0:
+            self.send_generic_mesg(chat_id, 'MotD Function is for groups only.', mesg_id)
             return
 
         mesg = update.message.text.replace('@afx_bot', '')
@@ -1012,12 +1072,12 @@ class afx_bot:
         schat_id = str(chat_id)
         motd_update_match_res = re.match('^/motd[\s\n]+(.+)', mesg, re.IGNORECASE | re.DOTALL)
 
-        if(mesg_low == '/motd'):  # print motd
-            self.sendMotd(chat_id, mesg_id)
-        elif(motd_update_match_res):
+        if mesg_low == '/motd':    # print motd
+            self.send_motd(chat_id, mesg_id)
+        elif motd_update_match_res:
             motd_cmd = motd_update_match_res.group(1).strip()
 
-            if(not schat_id in self.motds.keys()):
+            if not schat_id in self.motds.keys():
                 self.motds[schat_id] = dict()
 
             self.motds[schat_id]['msg'] = motd_cmd
@@ -1034,15 +1094,15 @@ class afx_bot:
             except Exception as ex:
                 logging.exception('!!! EXCEPTION HAS OCCURRED !!!')
 
-            self.sendGenericMesg(chat_id, self.strs['r_motd_updated'].format(date = today_str), mesg_id)
+            self.send_generic_mesg(chat_id, self.strs['r_motd_updated'].format(date = today_str), mesg_id)
         else:
             for m in self.strs['q_motd_kws']:
-                if(m in mesg):
-                    self.sendMotd(chat_id, mesg_id)
+                if m in mesg:
+                    self.send_motd(chat_id, mesg_id)
 
-    def sendMotd(self,
-                  chat_id,
-                  mesg_id):
+    def send_motd(self,
+                                chat_id,
+                                mesg_id):
         """
         Send MotD content to given chat or user.
 
@@ -1054,20 +1114,20 @@ class afx_bot:
         """
         schat_id = str(chat_id)
 
-        if(schat_id in self.motds.keys()):
+        if schat_id in self.motds.keys():
             motd_date_str = datetime.strftime(self.motds[schat_id]['date'], '%Y-%m-%d')
         else:
             motd_date_str = '????-??-??'
 
-        if(not schat_id in self.motds.keys()):
-            self.sendGenericMesg(chat_id, self.strs['r_motd_no'], mesg_id)
-        elif (self.motds[schat_id]['date'] != date.today()):
-            self.sendGenericMesg(chat_id, self.strs['r_motd_old'].format(date = motd_date_str, motd = self.motds[schat_id]['msg']), mesg_id)
+        if not schat_id in self.motds.keys():
+            self.send_generic_mesg(chat_id, self.strs['r_motd_no'], mesg_id)
+        elif self.motds[schat_id]['date'] != date.today():
+            self.send_generic_mesg(chat_id, self.strs['r_motd_old'].format(date = motd_date_str, motd = self.motds[schat_id]['msg']), mesg_id)
         else:
-            self.sendGenericMesg(chat_id, self.strs['r_motd_ok'].format(date = motd_date_str, motd = self.motds[schat_id]['msg']), mesg_id)
+            self.send_generic_mesg(chat_id, self.strs['r_motd_ok'].format(date = motd_date_str, motd = self.motds[schat_id]['msg']), mesg_id)
 
-    def handleWashsnake(self,
-                        update):
+    def handle_washsnake(self,
+                         update):
         """
         Handles anti-flood responses.
 
@@ -1088,36 +1148,36 @@ class afx_bot:
         schat_id = str(chat_id)
         suser_id = str(user_id)
         washsnake_content = message.lower().strip()
-        if(not str(chat_id) in self.wash_record.keys()):
+        if not str(chat_id) in self.wash_record.keys():
             self.wash_record[schat_id] = dict()
 
         # random angry...
-        if(random.randint(1, 1000) >= 995 and chat_id in self.config['invasive_washsnake_chats']):
+        if random.randint(1, 1000) >= 995 and chat_id in self.config['invasive_washsnake_chats']:
             self.logger.debug('random angry triggered for {0} - {1}'.format(chat_id, mesg_id))
-            self.sendGenericMesg(chat_id, random.choice(self.strs['r_invasive_random_angry_strs']), mesg_id)
-        elif(not suser_id in self.wash_record[schat_id].keys()):
+            self.send_generic_mesg(chat_id, random.choice(self.strs['r_invasive_random_angry_strs']), mesg_id)
+        elif not suser_id in self.wash_record[schat_id].keys():
             self.logger.debug('new washsnake content for ' + suser_id)
             self.wash_record[schat_id][suser_id] = WashSnake(date, washsnake_content)
         else:
             # check
             washsnake_entry = self.wash_record[schat_id][suser_id];
-            if(washsnake_entry.content == washsnake_content):
+            if washsnake_entry.content == washsnake_content:
                 # same content, check time
                 time_delta = date - washsnake_entry.firsttime
                 self.logger.debug('washsnake_entry.firsttime = ' + str(washsnake_entry.firsttime))
                 self.logger.debug('date = ' + str(date))
                 self.logger.debug('time_delta = ' + str(time_delta))
 
-                if(time_delta < timedelta(seconds=60)):
+                if time_delta < timedelta(seconds=60):
                     self.logger.debug('wash ++ for ' + str(update.message))
                     self.wash_record[schat_id][suser_id].repeattimes += 1;
-                    if(washsnake_entry.repeattimes >= 2):
-                        if(not washsnake_entry.responded):
+                    if washsnake_entry.repeattimes >= 2:
+                        if not washsnake_entry.responded:
                             # WASH SNAKE!!
-                            if(chat_id in self.config['invasive_washsnake_chats'] or self.doAdmAuth(user_id)):
-                                self.sendGenericMesg(chat_id, random.choice(self.wash_snake_strs_unified), mesg_id)
+                            if chat_id in self.config['invasive_washsnake_chats'] or self.do_adm_auth(user_id):
+                                self.send_generic_mesg(chat_id, random.choice(self.wash_snake_strs_unified), mesg_id)
                             else:
-                                self.sendGenericMesg(chat_id, random.choice(self.strs['r_wash_snake_strs']), mesg_id)
+                                self.send_generic_mesg(chat_id, random.choice(self.strs['r_wash_snake_strs']), mesg_id)
                             self.wash_record[schat_id][suser_id].responded = True
 
                         return True
@@ -1132,24 +1192,26 @@ class afx_bot:
 
         return False
 
-    def setIsRunning(self,
-                     flag):
+    def set_is_running(self,
+                                         flag):
         """Assign flag to is_running."""
         self.is_running = flag
 
-    def setIsAcceptingPhotos(self,
-                             flag):
+    def set_is_accepting_photos(self,
+                                      flag):
         """Assign flag to is_accepting_photos."""
         self.is_accepting_photos = flag
 
-    def executeCallbacks(self, bcblist, update):
+    @staticmethod
+    def execute_callbacks(bcblist,
+                          update):
         """Run registered callbacks."""
         for bcb in bcblist:
-            if(bcb.execute(update)):
+            if bcb.execute(update):
                 return True
         return False
 
-    def registerCallbacks(self):
+    def register_callbacks(self):
         """Register callbacks."""
 
         # For restricted chats, only restricted commands and fortune teller works.
@@ -1158,14 +1220,14 @@ class afx_bot:
                              self,
                              {'q_kw': '/'},
                              False,
-                             lambda update: self.handleCmd(update)),
+                             lambda update: self.handle_cmd(update)),
 
             self.BotCallback('call_fortune_teller_bcb',
                              self,
                              { },
                              False,
-                             lambda update: self.handleFortuneTell(update),
-                             lambda update: self.matchFortuneType(update.message.text))
+                             lambda update: self.handle_fortune_tell(update),
+                             lambda update: self.match_fortune_type(update.message.text))
         ]
 
         # For regular chats.
@@ -1176,7 +1238,7 @@ class afx_bot:
                               'r_ok': self.strs['ar_reload_kwlist_ok'],
                               'r_ng': self.strs['ar_reload_kwlist_ng']},
                              True,
-                             lambda update: self.initResp()),
+                             lambda update: self.init_resp()),
 
             self.BotCallback('set_running_f_bcb',
                              self,
@@ -1184,7 +1246,7 @@ class afx_bot:
                               'r_ok': self.strs['sr_status_f_ok'],
                               'r_ng': self.strs['sr_status_f_ng']},
                              True,
-                             lambda update: self.setIsRunning(False)),
+                             lambda update: self.set_is_running(False)),
 
             self.BotCallback('set_imgupload_t_bcb',
                              self,
@@ -1192,7 +1254,7 @@ class afx_bot:
                               'r_ok': self.strs['sr_imgupload_t_ok'],
                               'r_ng': self.strs['sr_imgupload_t_ng']},
                              True,
-                             lambda update: self.setIsAcceptingPhotos(True)),
+                             lambda update: self.set_is_accepting_photos(True)),
 
             self.BotCallback('set_imgupload_f_bcb',
                              self,
@@ -1200,27 +1262,28 @@ class afx_bot:
                               'r_ok': self.strs['sr_imgupload_f_ok'],
                               'r_ng': self.strs['sr_imgupload_f_ng']},
                              True,
-                             lambda update: self.setIsAcceptingPhotos(False)),
+                             lambda update: self.set_is_accepting_photos(False)),
 
             self.BotCallback('call_adm_cmd_handler_bcb',
                              self,
                              {'q_kw': '/adm'},
                              True,
-                             lambda update: self.handleAdmCmd(update)),
+                             lambda update: self.handle_adm_cmd(update)),
 
             self.BotCallback('call_cmd_handler_bcb',
                              self,
                              {'q_kw': '/'},
                              False,
-                             lambda update: self.handleCmd(update)),
+                             lambda update: self.handle_cmd(update)),
 
             self.BotCallback('call_fortune_teller_bcb',
                              self,
                              { },
                              False,
-                             lambda update: self.handleFortuneTell(update),
-                             lambda update: self.matchFortuneType(update.message.text))
+                             lambda update: self.handle_fortune_tell(update),
+                             lambda update: self.match_fortune_type(update.message.text))
         ]
+
 
     class BotCallback:
         """
@@ -1268,30 +1331,30 @@ class afx_bot:
             mesg_id = update.message.message_id
             user_id = update.message.from_user.id
 
-            if('q_kw' in self.strs.keys()):
+            if 'q_kw' in self.strs.keys():
                 cond = mesg.startswith(self.strs['q_kw'])
             else:
                 cond = self.cond_callback(update)
 
-            if(cond):
-                if((self.bot.doAdmAuth(user_id) and self.need_adm) or not self.need_adm):
-                    if(self.handler_callback != None):
+            if cond:
+                if (self.bot.do_adm_auth(user_id) and self.need_adm) or not self.need_adm:
+                    if self.handler_callback:
                         self.handler_callback(update)
 
-                    if('r_ok' in self.strs.keys()):
-                        self.bot.sendGenericMesg(chat_id, mesg_id, self.strs['r_ok'])
+                    if 'r_ok' in self.strs.keys():
+                        self.bot.send_generic_mesg(chat_id, self.strs['r_ok'], mesg_id)
 
                     return True
                 else:
-                    if('r_ok' in self.strs.keys()):
-                        self.bot.sendGenericMesg(chat_id, mesg_id, self.strs['r_ng'])
+                    if 'r_ok' in self.strs.keys():
+                        self.bot.send_generic_mesg(chat_id, self.strs['r_ng'], mesg_id)
 
                     return True
             else:
                 return False
 
 def main():
-    bot = afx_bot('config.json')
+    bot = AFXBot('config.json')
     bot.run()
 
 if __name__ == '__main__':
